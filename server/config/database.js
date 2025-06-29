@@ -37,8 +37,8 @@ export async function initializeDatabase() {
     console.log(`Database ${dbConfig.database} created or already exists`);
     await adminConnection.end();
 
-    // Adapt to existing schema
-    await adaptToExistingSchema();
+    // Ensure all tables exist and are properly structured
+    await ensureTablesExist();
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Database initialization error:', error);
@@ -46,7 +46,7 @@ export async function initializeDatabase() {
   }
 }
 
-async function adaptToExistingSchema() {
+async function ensureTablesExist() {
   try {
     // Check what tables already exist
     const [existingTables] = await pool.execute(
@@ -57,38 +57,24 @@ async function adaptToExistingSchema() {
     const tableNames = existingTables.map(row => row.TABLE_NAME);
     console.log('Existing tables:', tableNames);
 
-    // Add missing columns to users table
-    if (tableNames.includes('users')) {
-      const [userColumns] = await pool.execute(`
-        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users'
-      `, [dbConfig.database]);
-      
-      const columnNames = userColumns.map(row => row.COLUMN_NAME);
+    // Ensure users table exists with all required columns
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        user_id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role ENUM('customer', 'owner', 'agent', 'admin') DEFAULT 'customer',
+        phone_number VARCHAR(20),
+        town VARCHAR(100),
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✓ Users table ready');
 
-      // Add missing columns
-      const columnsToAdd = [
-        { name: 'password', definition: 'VARCHAR(255)' },
-        { name: 'role', definition: 'ENUM("customer", "owner", "agent", "admin") DEFAULT "customer"' },
-        { name: 'town', definition: 'VARCHAR(100)' },
-        { name: 'is_active', definition: 'BOOLEAN DEFAULT true' },
-        { name: 'created_at', definition: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
-        { name: 'updated_at', definition: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
-      ];
-
-      for (const column of columnsToAdd) {
-        if (!columnNames.includes(column.name)) {
-          try {
-            await pool.execute(`ALTER TABLE users ADD COLUMN ${column.name} ${column.definition}`);
-            console.log(`✓ Added ${column.name} column to users table`);
-          } catch (err) {
-            console.log(`- Column ${column.name} might already exist`);
-          }
-        }
-      }
-    }
-
-    // Create restaurants_info table for restaurant details
+    // Ensure restaurants_info table exists
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS restaurants_info (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -112,7 +98,7 @@ async function adaptToExistingSchema() {
     `);
     console.log('✓ Restaurants info table ready');
 
-    // Create restaurant_categories table
+    // Ensure restaurant_categories table exists
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS restaurant_categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -124,70 +110,9 @@ async function adaptToExistingSchema() {
     `);
     console.log('✓ Restaurant categories table ready');
 
-    // Handle menu_items table conflict
-    await handleMenuItemsTable();
-
-    // Enhance existing orders table
-    const [orderColumns] = await pool.execute(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders'
-    `, [dbConfig.database]).catch(() => [[]]);
-    
-    if (orderColumns.length > 0) {
-      const columnNames = orderColumns.map(row => row.COLUMN_NAME);
-      
-      const columnsToAdd = [
-        { name: 'restaurant_id', definition: 'INT' },
-        { name: 'delivery_address', definition: 'TEXT' },
-        { name: 'customer_phone', definition: 'VARCHAR(20)' },
-        { name: 'payment_method', definition: 'VARCHAR(50) DEFAULT "cash"' },
-        { name: 'payment_status', definition: 'ENUM("pending", "paid", "failed") DEFAULT "pending"' },
-        { name: 'agent_id', definition: 'INT' }
-      ];
-
-      for (const column of columnsToAdd) {
-        if (!columnNames.includes(column.name)) {
-          try {
-            await pool.execute(`ALTER TABLE orders ADD COLUMN ${column.name} ${column.definition}`);
-            console.log(`✓ Added ${column.name} column to orders table`);
-          } catch (err) {
-            console.log(`- Column ${column.name} might already exist`);
-          }
-        }
-      }
-    }
-
-    // Create default admin user
-    await createDefaultAdmin();
-
-  } catch (error) {
-    console.error('Error adapting schema:', error);
-    throw error;
-  }
-}
-
-async function handleMenuItemsTable() {
-  try {
-    // Check if menu_items exists and what type it is
-    const [menuItemsInfo] = await pool.execute(`
-      SELECT TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES 
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'menu_items'
-    `, [dbConfig.database]);
-
-    if (menuItemsInfo.length > 0) {
-      // Drop existing menu_items (whether it's a table or view)
-      if (menuItemsInfo[0].TABLE_TYPE === 'VIEW') {
-        await pool.execute('DROP VIEW IF EXISTS menu_items');
-        console.log('✓ Dropped existing menu_items view');
-      } else {
-        await pool.execute('DROP TABLE IF EXISTS menu_items');
-        console.log('✓ Dropped existing menu_items table');
-      }
-    }
-
-    // Now create the proper menu_items table
+    // Ensure menu_items table exists
     await pool.execute(`
-      CREATE TABLE menu_items (
+      CREATE TABLE IF NOT EXISTS menu_items (
         menu_id INT AUTO_INCREMENT PRIMARY KEY,
         restaurant_id INT NOT NULL,
         item_name VARCHAR(255) NOT NULL,
@@ -202,25 +127,64 @@ async function handleMenuItemsTable() {
         FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE
       )
     `);
-    console.log('✓ Created new menu_items table');
+    console.log('✓ Menu items table ready');
 
-    // If there's an existing menu table, migrate data
-    const [existingTables] = await pool.execute(
-      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'menu'",
-      [dbConfig.database]
-    );
+    // Ensure orders table exists
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        customer_id INT NOT NULL,
+        restaurant_id INT NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        status ENUM('pending', 'preparing', 'ready', 'in_transit', 'delivered', 'cancelled') DEFAULT 'pending',
+        delivery_address TEXT NOT NULL,
+        customer_phone VARCHAR(20) NOT NULL,
+        payment_method VARCHAR(50) DEFAULT 'cash',
+        payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
+        agent_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE,
+        FOREIGN KEY (agent_id) REFERENCES users(user_id) ON DELETE SET NULL
+      )
+    `);
+    console.log('✓ Orders table ready');
 
-    if (existingTables.length > 0) {
-      // Check if menu table has data and migrate it
-      const [menuData] = await pool.execute('SELECT * FROM menu LIMIT 1');
-      if (menuData.length > 0) {
-        console.log('✓ Found existing menu data, migration may be needed');
-        // You can add migration logic here if needed
-      }
-    }
+    // Ensure order_items table exists
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        menu_item_id INT NOT NULL,
+        quantity INT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_id) ON DELETE CASCADE
+      )
+    `);
+    console.log('✓ Order items table ready');
+
+    // Ensure delivery_locations table exists
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS delivery_locations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        agent_id INT NOT NULL,
+        latitude DECIMAL(10, 8) NOT NULL,
+        longitude DECIMAL(11, 8) NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (agent_id) REFERENCES users(user_id) ON DELETE CASCADE
+      )
+    `);
+    console.log('✓ Delivery locations table ready');
+
+    // Create default admin user if it doesn't exist
+    await createDefaultAdmin();
 
   } catch (error) {
-    console.error('Error handling menu_items table:', error);
+    console.error('Error ensuring tables exist:', error);
     throw error;
   }
 }
@@ -241,6 +205,8 @@ async function createDefaultAdmin() {
         ['SmartBite Admin', 'admin@smartbite.cm', hashedPassword, 'admin', 'Douala', '+237600000000']
       );
       console.log('✓ Default admin user created');
+    } else {
+      console.log('✓ Default admin user already exists');
     }
   } catch (error) {
     console.log('Note: Could not create default admin:', error.message);

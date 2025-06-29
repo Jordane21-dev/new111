@@ -10,7 +10,7 @@ router.get('/customer', requireRole(['customer']), async (req, res) => {
     const [orders] = await pool.execute(
       `SELECT o.*, r.name as restaurant_name, r.image as restaurant_image
        FROM orders o
-       JOIN restaurants r ON o.restaurant_id = r.id
+       JOIN restaurants_info r ON o.restaurant_id = r.id
        WHERE o.customer_id = ?
        ORDER BY o.created_at DESC`,
       [req.user.id]
@@ -19,9 +19,9 @@ router.get('/customer', requireRole(['customer']), async (req, res) => {
     // Get order items for each order
     for (const order of orders) {
       const [items] = await pool.execute(
-        `SELECT oi.*, mi.name, mi.image
+        `SELECT oi.*, mi.item_name as name, mi.image
          FROM order_items oi
-         JOIN menu_items mi ON oi.menu_item_id = mi.id
+         JOIN menu_items mi ON oi.menu_item_id = mi.menu_id
          WHERE oi.order_id = ?`,
         [order.id]
       );
@@ -40,7 +40,7 @@ router.get('/restaurant', requireRole(['owner']), async (req, res) => {
   try {
     // Get restaurant ID for this owner
     const [restaurants] = await pool.execute(
-      'SELECT id FROM restaurants WHERE owner_id = ?',
+      'SELECT id FROM restaurants_info WHERE user_id = ?',
       [req.user.id]
     );
 
@@ -51,9 +51,9 @@ router.get('/restaurant', requireRole(['owner']), async (req, res) => {
     const restaurantId = restaurants[0].id;
 
     const [orders] = await pool.execute(
-      `SELECT o.*, u.name as customer_name, u.phone as customer_phone
+      `SELECT o.*, u.name as customer_name, u.phone_number as customer_phone
        FROM orders o
-       JOIN users u ON o.customer_id = u.id
+       JOIN users u ON o.customer_id = u.user_id
        WHERE o.restaurant_id = ?
        ORDER BY o.created_at DESC`,
       [restaurantId]
@@ -62,9 +62,9 @@ router.get('/restaurant', requireRole(['owner']), async (req, res) => {
     // Get order items for each order
     for (const order of orders) {
       const [items] = await pool.execute(
-        `SELECT oi.*, mi.name, mi.image
+        `SELECT oi.*, mi.item_name as name, mi.image
          FROM order_items oi
-         JOIN menu_items mi ON oi.menu_item_id = mi.id
+         JOIN menu_items mi ON oi.menu_item_id = mi.menu_id
          WHERE oi.order_id = ?`,
         [order.id]
       );
@@ -85,8 +85,8 @@ router.get('/available-deliveries', requireRole(['agent']), async (req, res) => 
       `SELECT o.*, r.name as restaurant_name, r.address as restaurant_address,
               u.name as customer_name
        FROM orders o
-       JOIN restaurants r ON o.restaurant_id = r.id
-       JOIN users u ON o.customer_id = u.id
+       JOIN restaurants_info r ON o.restaurant_id = r.id
+       JOIN users u ON o.customer_id = u.user_id
        WHERE o.status = 'ready' AND o.agent_id IS NULL
        ORDER BY o.created_at ASC`
     );
@@ -94,9 +94,9 @@ router.get('/available-deliveries', requireRole(['agent']), async (req, res) => 
     // Get order items for each order
     for (const order of orders) {
       const [items] = await pool.execute(
-        `SELECT oi.*, mi.name
+        `SELECT oi.*, mi.item_name as name
          FROM order_items oi
-         JOIN menu_items mi ON oi.menu_item_id = mi.id
+         JOIN menu_items mi ON oi.menu_item_id = mi.menu_id
          WHERE oi.order_id = ?`,
         [order.id]
       );
@@ -117,8 +117,8 @@ router.get('/agent', requireRole(['agent']), async (req, res) => {
       `SELECT o.*, r.name as restaurant_name, r.address as restaurant_address,
               u.name as customer_name
        FROM orders o
-       JOIN restaurants r ON o.restaurant_id = r.id
-       JOIN users u ON o.customer_id = u.id
+       JOIN restaurants_info r ON o.restaurant_id = r.id
+       JOIN users u ON o.customer_id = u.user_id
        WHERE o.agent_id = ?
        ORDER BY o.created_at DESC`,
       [req.user.id]
@@ -127,9 +127,9 @@ router.get('/agent', requireRole(['agent']), async (req, res) => {
     // Get order items for each order
     for (const order of orders) {
       const [items] = await pool.execute(
-        `SELECT oi.*, mi.name
+        `SELECT oi.*, mi.item_name as name
          FROM order_items oi
-         JOIN menu_items mi ON oi.menu_item_id = mi.id
+         JOIN menu_items mi ON oi.menu_item_id = mi.menu_id
          WHERE oi.order_id = ?`,
         [order.id]
       );
@@ -158,13 +158,26 @@ router.post('/', requireRole(['customer']), async (req, res) => {
       payment_method = 'cash'
     } = req.body;
 
-    // Calculate total
+    console.log('Creating order with data:', req.body);
+
+    // Validate required fields
+    if (!restaurant_id || !items || !Array.isArray(items) || items.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Restaurant ID and items are required' });
+    }
+
+    if (!delivery_address || !customer_phone) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Delivery address and phone number are required' });
+    }
+
+    // Calculate total and validate items
     let total = 0;
     const orderItems = [];
 
     for (const item of items) {
       const [menuItems] = await connection.execute(
-        'SELECT price FROM menu_items WHERE id = ? AND is_available = true',
+        'SELECT item_price FROM menu_items WHERE menu_id = ? AND is_available = true',
         [item.menu_item_id]
       );
 
@@ -173,13 +186,13 @@ router.post('/', requireRole(['customer']), async (req, res) => {
         return res.status(400).json({ error: `Menu item ${item.menu_item_id} not available` });
       }
 
-      const itemTotal = menuItems[0].price * item.quantity;
+      const itemTotal = menuItems[0].item_price * item.quantity;
       total += itemTotal;
       
       orderItems.push({
         menu_item_id: item.menu_item_id,
         quantity: item.quantity,
-        price: menuItems[0].price
+        price: menuItems[0].item_price
       });
     }
 
@@ -192,6 +205,7 @@ router.post('/', requireRole(['customer']), async (req, res) => {
     );
 
     const orderId = orderResult.insertId;
+    console.log('Order created with ID:', orderId);
 
     // Insert order items
     for (const item of orderItems) {
@@ -202,16 +216,19 @@ router.post('/', requireRole(['customer']), async (req, res) => {
     }
 
     await connection.commit();
+    console.log('Order transaction committed');
 
     // Emit real-time notification
     const io = req.app.get('io');
-    io.emit('new-order', {
-      orderId,
-      restaurantId: restaurant_id,
-      customerId: req.user.id,
-      total,
-      timestamp: new Date()
-    });
+    if (io) {
+      io.emit('new-order', {
+        orderId,
+        restaurantId: restaurant_id,
+        customerId: req.user.id,
+        total,
+        timestamp: new Date()
+      });
+    }
 
     res.status(201).json({
       message: 'Order created successfully',
@@ -233,11 +250,13 @@ router.put('/:id/status', async (req, res) => {
     const { status, agent_id } = req.body;
     const orderId = req.params.id;
 
+    console.log('Updating order status:', { orderId, status, agent_id, user: req.user });
+
     // Verify permissions
     const [orders] = await pool.execute(
-      `SELECT o.*, r.owner_id 
+      `SELECT o.*, r.user_id as owner_id 
        FROM orders o
-       JOIN restaurants r ON o.restaurant_id = r.id
+       JOIN restaurants_info r ON o.restaurant_id = r.id
        WHERE o.id = ?`,
       [orderId]
     );
@@ -272,15 +291,19 @@ router.put('/:id/status', async (req, res) => {
       updateValues
     );
 
+    console.log('Order status updated successfully');
+
     // Emit real-time notification
     const io = req.app.get('io');
-    io.emit('order-status-update', {
-      orderId,
-      status,
-      restaurantId: order.restaurant_id,
-      customerId: order.customer_id,
-      timestamp: new Date()
-    });
+    if (io) {
+      io.emit('order-status-update', {
+        orderId,
+        status,
+        restaurantId: order.restaurant_id,
+        customerId: order.customer_id,
+        timestamp: new Date()
+      });
+    }
 
     res.json({ message: 'Order status updated successfully' });
   } catch (error) {
@@ -312,13 +335,15 @@ router.put('/:id/accept-delivery', requireRole(['agent']), async (req, res) => {
 
     // Emit real-time notification
     const io = req.app.get('io');
-    io.emit('order-status-update', {
-      orderId,
-      status: 'in_transit',
-      agentId: req.user.id,
-      agentName: req.user.name,
-      timestamp: new Date()
-    });
+    if (io) {
+      io.emit('order-status-update', {
+        orderId,
+        status: 'in_transit',
+        agentId: req.user.id,
+        agentName: req.user.name,
+        timestamp: new Date()
+      });
+    }
 
     res.json({ message: 'Delivery accepted successfully' });
   } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import StatusBadge from '../../components/StatusBadge';
@@ -10,7 +10,7 @@ import { ShoppingCart, MapPin, Phone, CreditCard, Plus, Minus, X } from 'lucide-
 export default function MyOrders() {
   const { user } = useAuth();
   const { items, updateQuantity, removeItem, clearCart, total } = useCart();
-  const { createOrder, getOrdersByCustomer } = useOrders();
+  const { orders, createOrder, getCustomerOrders, loading } = useOrders();
   const navigate = useNavigate();
   
   const [showCheckout, setShowCheckout] = useState(false);
@@ -20,7 +20,11 @@ export default function MyOrders() {
   });
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
-  const myOrders = user ? getOrdersByCustomer(user.id) : [];
+  useEffect(() => {
+    if (user?.role === 'customer') {
+      getCustomerOrders();
+    }
+  }, [user]);
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,30 +48,34 @@ export default function MyOrders() {
 
       // Create separate orders for each restaurant
       for (const restaurantOrder of Object.values(itemsByRestaurant)) {
-        const orderTotal = restaurantOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const orderItems = restaurantOrder.items.map(item => ({
+          menu_item_id: item.id,
+          quantity: item.quantity,
+          price: item.price
+        }));
         
-        createOrder({
-          customerId: user.id,
-          customerName: user.name,
-          restaurantId: restaurantOrder.restaurantId,
-          restaurantName: restaurantOrder.restaurantName,
-          items: restaurantOrder.items,
-          total: orderTotal,
-          status: 'pending',
-          deliveryAddress: orderData.deliveryAddress,
-          phone: orderData.phone
-        });
+        const orderPayload = {
+          restaurant_id: restaurantOrder.restaurantId,
+          items: orderItems,
+          delivery_address: orderData.deliveryAddress,
+          customer_phone: orderData.phone,
+          payment_method: 'cash'
+        };
+
+        console.log('Creating order:', orderPayload);
+        await createOrder(orderPayload);
       }
 
       clearCart();
       setShowCheckout(false);
       setOrderData({ deliveryAddress: '', phone: user?.phone || '' });
       
-      // Show success message and redirect
+      // Show success message
       alert('Order placed successfully! You can track your order below.');
       
-    } catch (error) {
-      alert('Failed to place order. Please try again.');
+    } catch (error: any) {
+      console.error('Order placement error:', error);
+      alert(error.message || 'Failed to place order. Please try again.');
     } finally {
       setIsPlacingOrder(false);
     }
@@ -169,7 +177,11 @@ export default function MyOrders() {
         <div className="lg:col-span-2">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Order History</h2>
           
-          {myOrders.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+            </div>
+          ) : orders.length === 0 ? (
             <div className="bg-white rounded-xl shadow-lg p-8 text-center border border-gray-100">
               <div className="text-gray-300 mb-4">
                 <ShoppingCart className="h-16 w-16 mx-auto" />
@@ -185,21 +197,21 @@ export default function MyOrders() {
             </div>
           ) : (
             <div className="space-y-6">
-              {myOrders.map((order) => (
+              {orders.map((order) => (
                 <div key={order.id} className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900">{order.restaurantName}</h3>
+                      <h3 className="text-lg font-bold text-gray-900">{order.restaurant_name}</h3>
                       <p className="text-gray-500 text-sm">Order #{order.id}</p>
                       <p className="text-gray-500 text-sm">
-                        {new Date(order.createdAt).toLocaleString()}
+                        {new Date(order.created_at).toLocaleString()}
                       </p>
                     </div>
                     <StatusBadge status={order.status} />
                   </div>
 
                   <div className="space-y-2 mb-4">
-                    {order.items.map((item, index) => (
+                    {order.items?.map((item, index) => (
                       <div key={index} className="flex justify-between items-center text-sm">
                         <span>{item.quantity}x {item.name}</span>
                         <span className="font-medium">
@@ -213,11 +225,11 @@ export default function MyOrders() {
                     <div className="text-sm text-gray-600">
                       <div className="flex items-center mb-1">
                         <MapPin className="h-4 w-4 mr-1" />
-                        {order.deliveryAddress}
+                        {order.delivery_address}
                       </div>
                       <div className="flex items-center">
                         <Phone className="h-4 w-4 mr-1" />
-                        {order.phone}
+                        {order.customer_phone}
                       </div>
                     </div>
                     <div className="text-lg font-bold text-orange-600">
@@ -225,10 +237,10 @@ export default function MyOrders() {
                     </div>
                   </div>
 
-                  {order.agentName && order.status === 'in_transit' && (
+                  {order.agent_name && order.status === 'in_transit' && (
                     <div className="mt-3 p-3 bg-blue-50 rounded-lg">
                       <p className="text-sm text-blue-800">
-                        <strong>Delivery Agent:</strong> {order.agentName}
+                        <strong>Delivery Agent:</strong> {order.agent_name}
                       </p>
                     </div>
                   )}

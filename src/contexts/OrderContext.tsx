@@ -1,113 +1,168 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CartItem } from './CartContext';
+import { ordersAPI } from '../services/api';
+import { useAuth } from './AuthContext';
+
+export interface OrderItem {
+  id: string;
+  menu_item_id: string;
+  quantity: number;
+  price: number;
+  name: string;
+  image?: string;
+}
 
 export interface Order {
   id: string;
-  customerId: string;
-  customerName: string;
-  restaurantId: string;
-  restaurantName: string;
-  items: CartItem[];
+  customer_id: string;
+  customer_name?: string;
+  customer_phone: string;
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_image?: string;
+  items: OrderItem[];
   total: number;
   status: 'pending' | 'preparing' | 'ready' | 'in_transit' | 'delivered' | 'cancelled';
-  createdAt: Date;
-  updatedAt: Date;
-  deliveryAddress: string;
-  phone: string;
-  agentId?: string;
-  agentName?: string;
+  created_at: string;
+  updated_at: string;
+  delivery_address: string;
+  payment_method: string;
+  payment_status: string;
+  agent_id?: string;
+  agent_name?: string;
 }
 
 interface OrderContextType {
   orders: Order[];
-  createOrder: (orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => string;
-  updateOrderStatus: (orderId: string, status: Order['status'], agentId?: string) => void;
-  getOrdersByCustomer: (customerId: string) => Order[];
-  getOrdersByRestaurant: (restaurantId: string) => Order[];
-  getAvailableDeliveries: () => Order[];
-  getOrdersByAgent: (agentId: string) => Order[];
+  loading: boolean;
+  createOrder: (orderData: any) => Promise<string>;
+  updateOrderStatus: (orderId: string, status: Order['status'], agentId?: string) => Promise<void>;
+  getCustomerOrders: () => Promise<void>;
+  getRestaurantOrders: () => Promise<void>;
+  getAvailableDeliveries: () => Promise<Order[]>;
+  getAgentOrders: () => Promise<void>;
+  acceptDelivery: (orderId: string) => Promise<void>;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
-  useEffect(() => {
-    const savedOrders = localStorage.getItem('smartbite_orders');
-    if (savedOrders) {
-      const parsed = JSON.parse(savedOrders);
-      setOrders(parsed.map((order: any) => ({
-        ...order,
-        createdAt: new Date(order.createdAt),
-        updatedAt: new Date(order.updatedAt)
-      })));
+  const createOrder = async (orderData: any): Promise<string> => {
+    try {
+      setLoading(true);
+      console.log('Creating order:', orderData);
+      
+      const response = await ordersAPI.createOrder(orderData);
+      
+      // Refresh orders after creation
+      if (user?.role === 'customer') {
+        await getCustomerOrders();
+      }
+      
+      return response.data.orderId;
+    } catch (error: any) {
+      console.error('Failed to create order:', error);
+      throw new Error(error.response?.data?.error || 'Failed to create order');
+    } finally {
+      setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('smartbite_orders', JSON.stringify(orders));
-  }, [orders]);
-
-  const createOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): string => {
-    const orderId = Date.now().toString();
-    const newOrder: Order = {
-      ...orderData,
-      id: orderId,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    setOrders(prev => [newOrder, ...prev]);
-    
-    // Simulate real-time updates
-    setTimeout(() => {
-      updateOrderStatus(orderId, 'preparing');
-    }, 30000); // 30 seconds
-
-    return orderId;
   };
 
-  const updateOrderStatus = (orderId: string, status: Order['status'], agentId?: string) => {
-    setOrders(prev =>
-      prev.map(order =>
-        order.id === orderId
-          ? {
-              ...order,
-              status,
-              updatedAt: new Date(),
-              ...(agentId && { agentId, agentName: `Agent ${agentId}` })
-            }
+  const updateOrderStatus = async (orderId: string, status: Order['status'], agentId?: string): Promise<void> => {
+    try {
+      await ordersAPI.updateOrderStatus(orderId, { status, agent_id: agentId });
+      
+      // Update local state
+      setOrders(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, status, updated_at: new Date().toISOString(), ...(agentId && { agent_id: agentId }) }
           : order
-      )
-    );
+      ));
+    } catch (error: any) {
+      console.error('Failed to update order status:', error);
+      throw new Error(error.response?.data?.error || 'Failed to update order status');
+    }
   };
 
-  const getOrdersByCustomer = (customerId: string) => {
-    return orders.filter(order => order.customerId === customerId);
+  const getCustomerOrders = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      const response = await ordersAPI.getCustomerOrders();
+      setOrders(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch customer orders:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getOrdersByRestaurant = (restaurantId: string) => {
-    return orders.filter(order => order.restaurantId === restaurantId);
+  const getRestaurantOrders = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      const response = await ordersAPI.getRestaurantOrders();
+      setOrders(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch restaurant orders:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getAvailableDeliveries = () => {
-    return orders.filter(order => order.status === 'ready' && !order.agentId);
+  const getAvailableDeliveries = async (): Promise<Order[]> => {
+    try {
+      const response = await ordersAPI.getAvailableDeliveries();
+      return response.data || [];
+    } catch (error) {
+      console.error('Failed to fetch available deliveries:', error);
+      return [];
+    }
   };
 
-  const getOrdersByAgent = (agentId: string) => {
-    return orders.filter(order => order.agentId === agentId);
+  const getAgentOrders = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      const response = await ordersAPI.getAgentOrders();
+      setOrders(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch agent orders:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const acceptDelivery = async (orderId: string): Promise<void> => {
+    try {
+      await ordersAPI.acceptDelivery(orderId);
+      
+      // Update local state
+      setOrders(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, status: 'in_transit', agent_id: user?.id, updated_at: new Date().toISOString() }
+          : order
+      ));
+    } catch (error: any) {
+      console.error('Failed to accept delivery:', error);
+      throw new Error(error.response?.data?.error || 'Failed to accept delivery');
+    }
   };
 
   return (
     <OrderContext.Provider value={{
       orders,
+      loading,
       createOrder,
       updateOrderStatus,
-      getOrdersByCustomer,
-      getOrdersByRestaurant,
+      getCustomerOrders,
+      getRestaurantOrders,
       getAvailableDeliveries,
-      getOrdersByAgent
+      getAgentOrders,
+      acceptDelivery
     }}>
       {children}
     </OrderContext.Provider>
