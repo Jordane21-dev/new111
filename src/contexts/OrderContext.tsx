@@ -70,11 +70,36 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       if (!orderData.delivery_address?.trim()) errors.push('Delivery address is required');
       if (!orderData.customer_phone?.trim()) errors.push('Phone number is required');
 
+      // Validate items
+      if (orderData.items && Array.isArray(orderData.items)) {
+        for (let i = 0; i < orderData.items.length; i++) {
+          const item = orderData.items[i];
+          if (!item.menu_item_id) {
+            errors.push(`Item ${i + 1}: Menu item ID is required`);
+          }
+          if (!item.quantity || item.quantity <= 0) {
+            errors.push(`Item ${i + 1}: Valid quantity is required`);
+          }
+        }
+      }
+
       if (errors.length > 0) {
         throw new Error(errors.join(', '));
       }
+
+      // Ensure numeric values
+      const processedOrderData = {
+        ...orderData,
+        restaurant_id: Number(orderData.restaurant_id),
+        items: orderData.items.map((item: any) => ({
+          menu_item_id: Number(item.menu_item_id),
+          quantity: Number(item.quantity)
+        }))
+      };
+
+      console.log('📤 Sending processed order data:', processedOrderData);
       
-      const response = await ordersAPI.createOrder(orderData);
+      const response = await ordersAPI.createOrder(processedOrderData);
       
       // Refresh orders after creation
       if (user?.role === 'customer') {

@@ -5,12 +5,12 @@ import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { useOrders } from '../../contexts/OrderContext';
-import { ShoppingCart, MapPin, Phone, CreditCard, Plus, Minus, X } from 'lucide-react';
+import { ShoppingCart, MapPin, Phone, CreditCard, Plus, Minus, X, AlertCircle } from 'lucide-react';
 
 export default function MyOrders() {
   const { user } = useAuth();
   const { items, updateQuantity, removeItem, clearCart, total } = useCart();
-  const { orders, createOrder, getCustomerOrders, loading } = useOrders();
+  const { orders, createOrder, getCustomerOrders, loading, error } = useOrders();
   const navigate = useNavigate();
   
   const [showCheckout, setShowCheckout] = useState(false);
@@ -19,6 +19,7 @@ export default function MyOrders() {
     phone: user?.phone || ''
   });
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [orderError, setOrderError] = useState('');
 
   useEffect(() => {
     if (user?.role === 'customer') {
@@ -26,14 +27,46 @@ export default function MyOrders() {
     }
   }, [user]);
 
+  const validateOrderData = () => {
+    const errors = [];
+    
+    if (!orderData.deliveryAddress.trim()) {
+      errors.push('Delivery address is required');
+    }
+    
+    if (!orderData.phone.trim()) {
+      errors.push('Phone number is required');
+    }
+    
+    if (items.length === 0) {
+      errors.push('Cart is empty');
+    }
+    
+    // Validate that all items are from the same restaurant
+    const restaurantIds = [...new Set(items.map(item => item.restaurantId))];
+    if (restaurantIds.length > 1) {
+      errors.push('All items must be from the same restaurant');
+    }
+    
+    return errors;
+  };
+
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || items.length === 0) return;
 
+    // Validate order data
+    const validationErrors = validateOrderData();
+    if (validationErrors.length > 0) {
+      setOrderError(validationErrors.join(', '));
+      return;
+    }
+
     setIsPlacingOrder(true);
+    setOrderError('');
     
     try {
-      // Group items by restaurant
+      // Group items by restaurant (should only be one restaurant)
       const itemsByRestaurant = items.reduce((acc, item) => {
         if (!acc[item.restaurantId]) {
           acc[item.restaurantId] = {
@@ -46,39 +79,47 @@ export default function MyOrders() {
         return acc;
       }, {} as Record<string, { restaurantId: string; restaurantName: string; items: typeof items }>);
 
-      // Create separate orders for each restaurant
+      // Create separate orders for each restaurant (should only be one)
       for (const restaurantOrder of Object.values(itemsByRestaurant)) {
+        // Format items for the API
         const orderItems = restaurantOrder.items.map(item => ({
-          menu_item_id: item.id,
-          quantity: item.quantity,
-          price: item.price
+          menu_item_id: parseInt(item.id), // Ensure it's a number
+          quantity: item.quantity
         }));
         
         const orderPayload = {
-          restaurant_id: restaurantOrder.restaurantId,
+          restaurant_id: parseInt(restaurantOrder.restaurantId), // Ensure it's a number
           items: orderItems,
-          delivery_address: orderData.deliveryAddress,
-          customer_phone: orderData.phone,
+          delivery_address: orderData.deliveryAddress.trim(),
+          customer_phone: orderData.phone.trim(),
           payment_method: 'cash'
         };
 
-        console.log('Creating order:', orderPayload);
+        console.log('🔄 Creating order with payload:', orderPayload);
         await createOrder(orderPayload);
       }
 
+      // Clear cart and close modal on success
       clearCart();
       setShowCheckout(false);
       setOrderData({ deliveryAddress: '', phone: user?.phone || '' });
+      setOrderError('');
       
       // Show success message
       alert('Order placed successfully! You can track your order below.');
       
     } catch (error: any) {
-      console.error('Order placement error:', error);
-      alert(error.message || 'Failed to place order. Please try again.');
+      console.error('❌ Order placement error:', error);
+      setOrderError(error.message || 'Failed to place order. Please try again.');
     } finally {
       setIsPlacingOrder(false);
     }
+  };
+
+  const closeCheckout = () => {
+    setShowCheckout(false);
+    setOrderError('');
+    setOrderData({ deliveryAddress: '', phone: user?.phone || '' });
   };
 
   return (
@@ -177,9 +218,19 @@ export default function MyOrders() {
         <div className="lg:col-span-2">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Order History</h2>
           
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-5 w-5 text-red-500" />
+                <span className="text-red-700">{error}</span>
+              </div>
+            </div>
+          )}
+          
           {loading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+              <span className="ml-3 text-gray-600">Loading orders...</span>
             </div>
           ) : orders.length === 0 ? (
             <div className="bg-white rounded-xl shadow-lg p-8 text-center border border-gray-100">
@@ -259,12 +310,21 @@ export default function MyOrders() {
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-bold text-gray-900">Checkout</h3>
                 <button
-                  onClick={() => setShowCheckout(false)}
+                  onClick={closeCheckout}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
+
+              {orderError && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm">{orderError}</span>
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handlePlaceOrder} className="space-y-6">
                 <div>
@@ -272,14 +332,18 @@ export default function MyOrders() {
                     Delivery Address *
                   </label>
                   <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <MapPin className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
                     <textarea
                       required
                       value={orderData.deliveryAddress}
-                      onChange={(e) => setOrderData({ ...orderData, deliveryAddress: e.target.value })}
+                      onChange={(e) => {
+                        setOrderData({ ...orderData, deliveryAddress: e.target.value });
+                        setOrderError(''); // Clear error when user types
+                      }}
                       placeholder="Enter your full delivery address..."
                       className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
                       rows={3}
+                      maxLength={500}
                     />
                   </div>
                 </div>
@@ -294,9 +358,13 @@ export default function MyOrders() {
                       type="tel"
                       required
                       value={orderData.phone}
-                      onChange={(e) => setOrderData({ ...orderData, phone: e.target.value })}
+                      onChange={(e) => {
+                        setOrderData({ ...orderData, phone: e.target.value });
+                        setOrderError(''); // Clear error when user types
+                      }}
                       placeholder="+237 6XX XXX XXX"
                       className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      maxLength={20}
                     />
                   </div>
                 </div>
@@ -318,7 +386,7 @@ export default function MyOrders() {
 
                 <button
                   type="submit"
-                  disabled={isPlacingOrder}
+                  disabled={isPlacingOrder || items.length === 0}
                   className="w-full bg-gradient-to-r from-orange-600 to-green-600 text-white py-3 px-4 rounded-lg font-semibold hover:from-orange-700 hover:to-green-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:transform-none"
                 >
                   {isPlacingOrder ? 'Placing Order...' : 'Place Order'}

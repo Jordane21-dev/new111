@@ -190,16 +190,41 @@ router.post('/', requireRole(['customer']), async (req, res) => {
       payment_method = 'cash'
     } = req.body;
 
-    console.log('🛒 Creating order:', { restaurant_id, items: items?.length, customer_id: req.user.id });
+    console.log('🛒 Creating order:', { 
+      restaurant_id, 
+      items: items?.length, 
+      customer_id: req.user.id,
+      delivery_address: delivery_address?.substring(0, 50) + '...',
+      customer_phone 
+    });
 
     // Comprehensive validation
     const errors = [];
-    if (!restaurant_id) errors.push('Restaurant ID is required');
+    if (!restaurant_id || isNaN(Number(restaurant_id))) {
+      errors.push('Valid restaurant ID is required');
+    }
     if (!items || !Array.isArray(items) || items.length === 0) {
       errors.push('Order items are required');
     }
-    if (!delivery_address?.trim()) errors.push('Delivery address is required');
-    if (!customer_phone?.trim()) errors.push('Customer phone number is required');
+    if (!delivery_address?.trim()) {
+      errors.push('Delivery address is required');
+    }
+    if (!customer_phone?.trim()) {
+      errors.push('Customer phone number is required');
+    }
+
+    // Validate each item
+    if (items && Array.isArray(items)) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item.menu_item_id || isNaN(Number(item.menu_item_id))) {
+          errors.push(`Item ${i + 1}: Valid menu item ID is required`);
+        }
+        if (!item.quantity || isNaN(Number(item.quantity)) || Number(item.quantity) <= 0) {
+          errors.push(`Item ${i + 1}: Valid quantity is required`);
+        }
+      }
+    }
 
     if (errors.length > 0) {
       await connection.rollback();
@@ -227,32 +252,39 @@ router.post('/', requireRole(['customer']), async (req, res) => {
     const orderItems = [];
 
     for (const item of items) {
-      if (!item.menu_item_id || !item.quantity || item.quantity <= 0) {
-        await connection.rollback();
-        return res.status(400).json({ error: 'Invalid item data' });
-      }
+      const menuItemId = Number(item.menu_item_id);
+      const quantity = Number(item.quantity);
 
       const [menuItems] = await connection.execute(
-        'SELECT menu_id, item_name, item_price FROM menu_items WHERE menu_id = ? AND is_available = true',
-        [item.menu_item_id]
+        'SELECT menu_id, item_name, item_price, restaurant_id FROM menu_items WHERE menu_id = ? AND is_available = true',
+        [menuItemId]
       );
 
       if (menuItems.length === 0) {
         await connection.rollback();
-        return res.status(400).json({ error: `Menu item ${item.menu_item_id} is not available` });
+        return res.status(400).json({ error: `Menu item ${menuItemId} is not available` });
       }
 
       const menuItem = menuItems[0];
-      const itemTotal = menuItem.item_price * item.quantity;
+
+      // Verify item belongs to the correct restaurant
+      if (menuItem.restaurant_id !== Number(restaurant_id)) {
+        await connection.rollback();
+        return res.status(400).json({ error: `Menu item ${menuItemId} does not belong to this restaurant` });
+      }
+
+      const itemTotal = menuItem.item_price * quantity;
       total += itemTotal;
       
       orderItems.push({
         menu_item_id: menuItem.menu_id,
-        quantity: item.quantity,
+        quantity: quantity,
         price: menuItem.item_price,
         item_name: menuItem.item_name
       });
     }
+
+    console.log(`💰 Order total calculated: ${total} XAF for ${orderItems.length} items`);
 
     // Create order
     const [orderResult] = await connection.execute(
@@ -274,7 +306,7 @@ router.post('/', requireRole(['customer']), async (req, res) => {
     }
 
     await connection.commit();
-    console.log(`✅ Order ${orderId} completed with ${orderItems.length} items`);
+    console.log(`🎉 Order ${orderId} completed successfully with ${orderItems.length} items`);
 
     // Emit real-time notification
     const io = req.app.get('io');
@@ -291,12 +323,20 @@ router.post('/', requireRole(['customer']), async (req, res) => {
     res.status(201).json({
       message: 'Order created successfully',
       orderId: orderId.toString(),
-      total
+      total: parseFloat(total.toFixed(2))
     });
   } catch (error) {
     await connection.rollback();
     console.error('❌ Create order error:', error);
-    res.status(500).json({ error: 'Failed to create order' });
+    
+    // Provide more specific error messages
+    if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+      res.status(400).json({ error: 'Invalid restaurant or menu item reference' });
+    } else if (error.code === 'ER_BAD_NULL_ERROR') {
+      res.status(400).json({ error: 'Missing required order information' });
+    } else {
+      res.status(500).json({ error: 'Failed to create order. Please try again.' });
+    }
   } finally {
     connection.release();
   }
