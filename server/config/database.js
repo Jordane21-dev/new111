@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -208,7 +209,6 @@ async function createDefaultAdmin() {
     );
 
     if (adminExists.length === 0) {
-      const bcrypt = await import('bcryptjs');
       const hashedPassword = await bcrypt.hash('admin123', 10);
       
       await pool.execute(
