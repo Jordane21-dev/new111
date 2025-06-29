@@ -9,6 +9,7 @@ import restaurantRoutes from './routes/restaurants.js';
 import menuRoutes from './routes/menu.js';
 import orderRoutes from './routes/orders.js';
 import locationRoutes from './routes/location.js';
+import paymentRoutes from './routes/payment.js';
 import { initializeDatabase } from './config/database.js';
 import { authenticateToken } from './middleware/auth.js';
 
@@ -40,6 +41,7 @@ app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', authenticateToken, orderRoutes);
 app.use('/api/location', authenticateToken, locationRoutes);
+app.use('/api/payment', paymentRoutes); // New payment routes
 
 // Socket.IO for real-time features
 const activeDeliveryAgents = new Map();
@@ -110,6 +112,18 @@ io.on('connection', (socket) => {
       orderId,
       status,
       restaurantId,
+      timestamp: new Date()
+    });
+  });
+
+  // Payment status updates
+  socket.on('payment-update', (data) => {
+    const { orderId, paymentStatus } = data;
+    
+    // Notify all relevant parties
+    io.emit('payment-status-changed', {
+      orderId,
+      paymentStatus,
       timestamp: new Date()
     });
   });

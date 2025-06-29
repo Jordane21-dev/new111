@@ -77,6 +77,13 @@ export const ordersAPI = {
   acceptDelivery: (id) => api.put(`/orders/${id}/accept-delivery`),
 };
 
+// Payment API - NEW
+export const paymentAPI = {
+  initiatePayment: (data) => api.post('/payment/initiate', data),
+  getPaymentStatus: (orderId) => api.get(`/payment/status/${orderId}`),
+  getPaymentHistory: () => api.get('/payment/history'),
+};
+
 // Location API
 export const locationAPI = {
   updateLocation: (data) => api.post('/location/update', data),

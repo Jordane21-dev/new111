@@ -133,7 +133,7 @@ async function createAllTables() {
     `);
     console.log('✅ Menu items table ready');
 
-    // Orders table
+    // Orders table - FIXED with proper column names
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -143,7 +143,7 @@ async function createAllTables() {
         status ENUM('pending', 'preparing', 'ready', 'in_transit', 'delivered', 'cancelled') DEFAULT 'pending',
         delivery_address TEXT NOT NULL,
         customer_phone VARCHAR(20) NOT NULL,
-        payment_method VARCHAR(50) DEFAULT 'cash',
+        payment_method ENUM('cash', 'mobile_money') DEFAULT 'cash',
         payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
         agent_id INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -155,6 +155,7 @@ async function createAllTables() {
         INDEX idx_restaurant (restaurant_id),
         INDEX idx_status (status),
         INDEX idx_agent (agent_id),
+        INDEX idx_payment_status (payment_status),
         INDEX idx_created (created_at)
       )
     `);
@@ -176,6 +177,33 @@ async function createAllTables() {
       )
     `);
     console.log('✅ Order items table ready');
+
+    // Payments table - NEW for payment tracking
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS payments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        user_id INT NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        phone_number VARCHAR(20) NOT NULL,
+        payment_method ENUM('mobile_money', 'cash') NOT NULL,
+        status ENUM('pending', 'successful', 'failed', 'cancelled') DEFAULT 'pending',
+        campay_reference VARCHAR(255) NULL,
+        campay_external_reference VARCHAR(255) NULL,
+        operator VARCHAR(50) NULL,
+        operator_reference VARCHAR(255) NULL,
+        reason TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        INDEX idx_order (order_id),
+        INDEX idx_user (user_id),
+        INDEX idx_status (status),
+        INDEX idx_campay_reference (campay_reference)
+      )
+    `);
+    console.log('✅ Payments table ready');
 
     // Delivery locations table for tracking
     await pool.execute(`
