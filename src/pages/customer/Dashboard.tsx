@@ -5,14 +5,14 @@ import { useCart } from '../../contexts/CartContext';
 import { useRestaurants } from '../../contexts/RestaurantContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { cameroonianTowns } from '../../data/mockData';
-import { Search, Filter, Star, Clock, Truck, ShoppingCart } from 'lucide-react';
+import { Search, Filter, Star, Clock, Truck, ShoppingCart, AlertCircle } from 'lucide-react';
 
 export default function CustomerDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTown, setSelectedTown] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const { items, total } = useCart();
-  const { restaurants, loading, fetchRestaurants } = useRestaurants();
+  const { restaurants, loading, error, fetchRestaurants } = useRestaurants();
   const { getMenuByRestaurant } = useMenu();
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export default function CustomerDashboard() {
     const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          restaurant.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTown = !selectedTown || restaurant.town === selectedTown;
-    const matchesCategory = !selectedCategory || restaurant.categories.includes(selectedCategory);
+    const matchesCategory = !selectedCategory || (restaurant.categories && restaurant.categories.includes(selectedCategory));
     
     return matchesSearch && matchesTown && matchesCategory && restaurant.is_active;
   });
@@ -35,6 +35,25 @@ export default function CustomerDashboard() {
       <Layout title="Browse Restaurants">
         <div className="flex justify-center items-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+          <span className="ml-3 text-gray-600">Loading restaurants...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="Browse Restaurants">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-red-800 mb-2">Unable to Load Restaurants</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={fetchRestaurants}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </Layout>
     );

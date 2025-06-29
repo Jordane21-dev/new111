@@ -7,6 +7,8 @@ const router = express.Router();
 // Get orders for customer
 router.get('/customer', requireRole(['customer']), async (req, res) => {
   try {
+    console.log(`🛒 Fetching orders for customer ${req.user.id}`);
+    
     const [orders] = await pool.execute(
       `SELECT o.*, r.name as restaurant_name, r.image as restaurant_image
        FROM orders o
@@ -25,12 +27,38 @@ router.get('/customer', requireRole(['customer']), async (req, res) => {
          WHERE oi.order_id = ?`,
         [order.id]
       );
-      order.items = items;
+      order.items = items.map(item => ({
+        id: item.id.toString(),
+        menu_item_id: item.menu_item_id.toString(),
+        quantity: item.quantity,
+        price: parseFloat(item.price),
+        name: item.name,
+        image: item.image
+      }));
     }
 
-    res.json(orders);
+    const formattedOrders = orders.map(order => ({
+      id: order.id.toString(),
+      customer_id: order.customer_id.toString(),
+      restaurant_id: order.restaurant_id.toString(),
+      restaurant_name: order.restaurant_name,
+      restaurant_image: order.restaurant_image,
+      total: parseFloat(order.total),
+      status: order.status,
+      delivery_address: order.delivery_address,
+      customer_phone: order.customer_phone,
+      payment_method: order.payment_method,
+      payment_status: order.payment_status,
+      agent_id: order.agent_id?.toString(),
+      created_at: order.created_at,
+      updated_at: order.updated_at,
+      items: order.items
+    }));
+
+    console.log(`✅ Found ${formattedOrders.length} orders for customer`);
+    res.json(formattedOrders);
   } catch (error) {
-    console.error('Get customer orders error:', error);
+    console.error('❌ Get customer orders error:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
@@ -49,6 +77,7 @@ router.get('/restaurant', requireRole(['owner']), async (req, res) => {
     }
 
     const restaurantId = restaurants[0].id;
+    console.log(`🏪 Fetching orders for restaurant ${restaurantId}`);
 
     const [orders] = await pool.execute(
       `SELECT o.*, u.name as customer_name, u.phone_number as customer_phone
@@ -71,9 +100,10 @@ router.get('/restaurant', requireRole(['owner']), async (req, res) => {
       order.items = items;
     }
 
+    console.log(`✅ Found ${orders.length} orders for restaurant`);
     res.json(orders);
   } catch (error) {
-    console.error('Get restaurant orders error:', error);
+    console.error('❌ Get restaurant orders error:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
@@ -103,9 +133,10 @@ router.get('/available-deliveries', requireRole(['agent']), async (req, res) => 
       order.items = items;
     }
 
+    console.log(`✅ Found ${orders.length} available deliveries`);
     res.json(orders);
   } catch (error) {
-    console.error('Get available deliveries error:', error);
+    console.error('❌ Get available deliveries error:', error);
     res.status(500).json({ error: 'Failed to fetch available deliveries' });
   }
 });
@@ -136,9 +167,10 @@ router.get('/agent', requireRole(['agent']), async (req, res) => {
       order.items = items;
     }
 
+    console.log(`✅ Found ${orders.length} orders for agent`);
     res.json(orders);
   } catch (error) {
-    console.error('Get agent orders error:', error);
+    console.error('❌ Get agent orders error:', error);
     res.status(500).json({ error: 'Failed to fetch agent orders' });
   }
 });
@@ -158,17 +190,36 @@ router.post('/', requireRole(['customer']), async (req, res) => {
       payment_method = 'cash'
     } = req.body;
 
-    console.log('Creating order with data:', req.body);
+    console.log('🛒 Creating order:', { restaurant_id, items: items?.length, customer_id: req.user.id });
 
-    // Validate required fields
-    if (!restaurant_id || !items || !Array.isArray(items) || items.length === 0) {
+    // Comprehensive validation
+    const errors = [];
+    if (!restaurant_id) errors.push('Restaurant ID is required');
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      errors.push('Order items are required');
+    }
+    if (!delivery_address?.trim()) errors.push('Delivery address is required');
+    if (!customer_phone?.trim()) errors.push('Customer phone number is required');
+
+    if (errors.length > 0) {
       await connection.rollback();
-      return res.status(400).json({ error: 'Restaurant ID and items are required' });
+      return res.status(400).json({ error: errors.join(', ') });
     }
 
-    if (!delivery_address || !customer_phone) {
+    // Verify restaurant exists and is active
+    const [restaurants] = await connection.execute(
+      'SELECT id, name, is_active FROM restaurants_info WHERE id = ?',
+      [restaurant_id]
+    );
+
+    if (restaurants.length === 0) {
       await connection.rollback();
-      return res.status(400).json({ error: 'Delivery address and phone number are required' });
+      return res.status(404).json({ error: 'Restaurant not found' });
+    }
+
+    if (!restaurants[0].is_active) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Restaurant is currently not accepting orders' });
     }
 
     // Calculate total and validate items
@@ -176,23 +227,30 @@ router.post('/', requireRole(['customer']), async (req, res) => {
     const orderItems = [];
 
     for (const item of items) {
+      if (!item.menu_item_id || !item.quantity || item.quantity <= 0) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Invalid item data' });
+      }
+
       const [menuItems] = await connection.execute(
-        'SELECT item_price FROM menu_items WHERE menu_id = ? AND is_available = true',
+        'SELECT menu_id, item_name, item_price FROM menu_items WHERE menu_id = ? AND is_available = true',
         [item.menu_item_id]
       );
 
       if (menuItems.length === 0) {
         await connection.rollback();
-        return res.status(400).json({ error: `Menu item ${item.menu_item_id} not available` });
+        return res.status(400).json({ error: `Menu item ${item.menu_item_id} is not available` });
       }
 
-      const itemTotal = menuItems[0].item_price * item.quantity;
+      const menuItem = menuItems[0];
+      const itemTotal = menuItem.item_price * item.quantity;
       total += itemTotal;
       
       orderItems.push({
-        menu_item_id: item.menu_item_id,
+        menu_item_id: menuItem.menu_id,
         quantity: item.quantity,
-        price: menuItems[0].item_price
+        price: menuItem.item_price,
+        item_name: menuItem.item_name
       });
     }
 
@@ -201,22 +259,22 @@ router.post('/', requireRole(['customer']), async (req, res) => {
       `INSERT INTO orders 
        (customer_id, restaurant_id, total, delivery_address, customer_phone, payment_method)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [req.user.id, restaurant_id, total, delivery_address, customer_phone, payment_method]
+      [req.user.id, restaurant_id, total, delivery_address.trim(), customer_phone.trim(), payment_method]
     );
 
     const orderId = orderResult.insertId;
-    console.log('Order created with ID:', orderId);
+    console.log(`✅ Order created with ID: ${orderId}`);
 
     // Insert order items
     for (const item of orderItems) {
       await connection.execute(
-        'INSERT INTO order_items (order_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)',
-        [orderId, item.menu_item_id, item.quantity, item.price]
+        'INSERT INTO order_items (order_id, menu_item_id, quantity, price, item_name) VALUES (?, ?, ?, ?, ?)',
+        [orderId, item.menu_item_id, item.quantity, item.price, item.item_name]
       );
     }
 
     await connection.commit();
-    console.log('Order transaction committed');
+    console.log(`✅ Order ${orderId} completed with ${orderItems.length} items`);
 
     // Emit real-time notification
     const io = req.app.get('io');
@@ -232,12 +290,12 @@ router.post('/', requireRole(['customer']), async (req, res) => {
 
     res.status(201).json({
       message: 'Order created successfully',
-      orderId,
+      orderId: orderId.toString(),
       total
     });
   } catch (error) {
     await connection.rollback();
-    console.error('Create order error:', error);
+    console.error('❌ Create order error:', error);
     res.status(500).json({ error: 'Failed to create order' });
   } finally {
     connection.release();
@@ -250,7 +308,7 @@ router.put('/:id/status', async (req, res) => {
     const { status, agent_id } = req.body;
     const orderId = req.params.id;
 
-    console.log('Updating order status:', { orderId, status, agent_id, user: req.user });
+    console.log(`📋 Updating order ${orderId} status to ${status}`);
 
     // Verify permissions
     const [orders] = await pool.execute(
@@ -291,7 +349,7 @@ router.put('/:id/status', async (req, res) => {
       updateValues
     );
 
-    console.log('Order status updated successfully');
+    console.log(`✅ Order ${orderId} status updated to ${status}`);
 
     // Emit real-time notification
     const io = req.app.get('io');
@@ -307,7 +365,7 @@ router.put('/:id/status', async (req, res) => {
 
     res.json({ message: 'Order status updated successfully' });
   } catch (error) {
-    console.error('Update order status error:', error);
+    console.error('❌ Update order status error:', error);
     res.status(500).json({ error: 'Failed to update order status' });
   }
 });
@@ -333,6 +391,8 @@ router.put('/:id/accept-delivery', requireRole(['agent']), async (req, res) => {
       [req.user.id, 'in_transit', orderId]
     );
 
+    console.log(`✅ Order ${orderId} accepted by agent ${req.user.id}`);
+
     // Emit real-time notification
     const io = req.app.get('io');
     if (io) {
@@ -347,7 +407,7 @@ router.put('/:id/accept-delivery', requireRole(['agent']), async (req, res) => {
 
     res.json({ message: 'Delivery accepted successfully' });
   } catch (error) {
-    console.error('Accept delivery error:', error);
+    console.error('❌ Accept delivery error:', error);
     res.status(500).json({ error: 'Failed to accept delivery' });
   }
 });

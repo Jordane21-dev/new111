@@ -18,11 +18,11 @@ export const pool = mysql.createPool(dbConfig);
 
 export async function initializeDatabase() {
   try {
-    console.log(`Attempting to connect to MySQL at ${dbConfig.host}:${dbConfig.port}`);
+    console.log(`🔄 Connecting to MySQL at ${dbConfig.host}:${dbConfig.port}`);
     
     // Test the connection first
     const connection = await pool.getConnection();
-    console.log('Successfully connected to MySQL database');
+    console.log('✅ Successfully connected to MySQL database');
     connection.release();
 
     // Create database if it doesn't exist
@@ -34,30 +34,23 @@ export async function initializeDatabase() {
     });
 
     await adminConnection.execute(`CREATE DATABASE IF NOT EXISTS ${dbConfig.database}`);
-    console.log(`Database ${dbConfig.database} created or already exists`);
+    console.log(`✅ Database ${dbConfig.database} ready`);
     await adminConnection.end();
 
-    // Ensure all tables exist and are properly structured
-    await ensureTablesExist();
-    console.log('Database initialized successfully');
+    // Create all required tables
+    await createAllTables();
+    await createDefaultAdmin();
+    
+    console.log('🎉 Database initialization completed successfully');
   } catch (error) {
-    console.error('Database initialization error:', error);
+    console.error('❌ Database initialization error:', error);
     throw error;
   }
 }
 
-async function ensureTablesExist() {
+async function createAllTables() {
   try {
-    // Check what tables already exist
-    const [existingTables] = await pool.execute(
-      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?",
-      [dbConfig.database]
-    );
-    
-    const tableNames = existingTables.map(row => row.TABLE_NAME);
-    console.log('Existing tables:', tableNames);
-
-    // Ensure users table exists with all required columns
+    // Users table - Core user information
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS users (
         user_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -69,48 +62,55 @@ async function ensureTablesExist() {
         town VARCHAR(100),
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_email (email),
+        INDEX idx_role (role),
+        INDEX idx_town (town)
       )
     `);
-    console.log('✓ Users table ready');
+    console.log('✅ Users table ready');
 
-    // Ensure restaurants_info table exists
+    // Restaurants table - Restaurant information
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS restaurants_info (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
-        image VARCHAR(500),
+        image VARCHAR(500) DEFAULT 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg',
         town VARCHAR(100) NOT NULL,
         address VARCHAR(500) NOT NULL,
         phone VARCHAR(20) NOT NULL,
         delivery_time VARCHAR(50) NOT NULL,
-        delivery_fee DECIMAL(10,2) NOT NULL,
-        min_order DECIMAL(10,2) NOT NULL,
-        rating DECIMAL(3,2) DEFAULT 0.0,
+        delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        min_order DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        rating DECIMAL(3,2) DEFAULT 4.5,
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-        UNIQUE KEY unique_user_restaurant (user_id)
+        UNIQUE KEY unique_user_restaurant (user_id),
+        INDEX idx_town (town),
+        INDEX idx_active (is_active),
+        INDEX idx_rating (rating)
       )
     `);
-    console.log('✓ Restaurants info table ready');
+    console.log('✅ Restaurants table ready');
 
-    // Ensure restaurant_categories table exists
+    // Restaurant categories table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS restaurant_categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
         restaurant_id INT NOT NULL,
         category VARCHAR(100) NOT NULL,
         FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_restaurant_category (restaurant_id, category)
+        UNIQUE KEY unique_restaurant_category (restaurant_id, category),
+        INDEX idx_category (category)
       )
     `);
-    console.log('✓ Restaurant categories table ready');
+    console.log('✅ Restaurant categories table ready');
 
-    // Ensure menu_items table exists
+    // Menu items table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS menu_items (
         menu_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -121,15 +121,18 @@ async function ensureTablesExist() {
         category VARCHAR(100) DEFAULT 'Main Course',
         prep_time INT DEFAULT 15,
         is_available BOOLEAN DEFAULT true,
-        image VARCHAR(500),
+        image VARCHAR(500) DEFAULT 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE,
+        INDEX idx_restaurant (restaurant_id),
+        INDEX idx_category (category),
+        INDEX idx_available (is_available)
       )
     `);
-    console.log('✓ Menu items table ready');
+    console.log('✅ Menu items table ready');
 
-    // Ensure orders table exists
+    // Orders table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -146,26 +149,34 @@ async function ensureTablesExist() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (customer_id) REFERENCES users(user_id) ON DELETE CASCADE,
         FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE,
-        FOREIGN KEY (agent_id) REFERENCES users(user_id) ON DELETE SET NULL
+        FOREIGN KEY (agent_id) REFERENCES users(user_id) ON DELETE SET NULL,
+        INDEX idx_customer (customer_id),
+        INDEX idx_restaurant (restaurant_id),
+        INDEX idx_status (status),
+        INDEX idx_agent (agent_id),
+        INDEX idx_created (created_at)
       )
     `);
-    console.log('✓ Orders table ready');
+    console.log('✅ Orders table ready');
 
-    // Ensure order_items table exists
+    // Order items table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS order_items (
         id INT AUTO_INCREMENT PRIMARY KEY,
         order_id INT NOT NULL,
         menu_item_id INT NOT NULL,
-        quantity INT NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
         price DECIMAL(10,2) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_id) ON DELETE CASCADE
+        FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_id) ON DELETE CASCADE,
+        INDEX idx_order (order_id),
+        INDEX idx_menu_item (menu_item_id)
       )
     `);
-    console.log('✓ Order items table ready');
+    console.log('✅ Order items table ready');
 
-    // Ensure delivery_locations table exists
+    // Delivery locations table for tracking
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS delivery_locations (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -175,16 +186,16 @@ async function ensureTablesExist() {
         longitude DECIMAL(11, 8) NOT NULL,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (agent_id) REFERENCES users(user_id) ON DELETE CASCADE
+        FOREIGN KEY (agent_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        INDEX idx_order (order_id),
+        INDEX idx_agent (agent_id),
+        INDEX idx_timestamp (timestamp)
       )
     `);
-    console.log('✓ Delivery locations table ready');
-
-    // Create default admin user if it doesn't exist
-    await createDefaultAdmin();
+    console.log('✅ Delivery locations table ready');
 
   } catch (error) {
-    console.error('Error ensuring tables exist:', error);
+    console.error('❌ Error creating tables:', error);
     throw error;
   }
 }
@@ -204,11 +215,11 @@ async function createDefaultAdmin() {
         'INSERT INTO users (name, email, password, role, town, phone_number) VALUES (?, ?, ?, ?, ?, ?)',
         ['SmartBite Admin', 'admin@smartbite.cm', hashedPassword, 'admin', 'Douala', '+237600000000']
       );
-      console.log('✓ Default admin user created');
+      console.log('✅ Default admin user created (admin@smartbite.cm / admin123)');
     } else {
-      console.log('✓ Default admin user already exists');
+      console.log('✅ Default admin user already exists');
     }
   } catch (error) {
-    console.log('Note: Could not create default admin:', error.message);
+    console.log('⚠️  Could not create default admin:', error.message);
   }
 }

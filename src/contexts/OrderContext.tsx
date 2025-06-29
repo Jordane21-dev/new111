@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { ordersAPI } from '../services/api';
 import { useAuth } from './AuthContext';
 
@@ -34,6 +34,7 @@ export interface Order {
 interface OrderContextType {
   orders: Order[];
   loading: boolean;
+  error: string | null;
   createOrder: (orderData: any) => Promise<string>;
   updateOrderStatus: (orderId: string, status: Order['status'], agentId?: string) => Promise<void>;
   getCustomerOrders: () => Promise<void>;
@@ -41,6 +42,7 @@ interface OrderContextType {
   getAvailableDeliveries: () => Promise<Order[]>;
   getAgentOrders: () => Promise<void>;
   acceptDelivery: (orderId: string) => Promise<void>;
+  clearError: () => void;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -48,12 +50,29 @@ const OrderContext = createContext<OrderContextType | undefined>(undefined);
 export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+
+  const clearError = () => setError(null);
 
   const createOrder = async (orderData: any): Promise<string> => {
     try {
       setLoading(true);
-      console.log('Creating order:', orderData);
+      setError(null);
+      console.log('🔄 Creating order...', orderData);
+      
+      // Frontend validation
+      const errors = [];
+      if (!orderData.restaurant_id) errors.push('Restaurant is required');
+      if (!orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+        errors.push('Order items are required');
+      }
+      if (!orderData.delivery_address?.trim()) errors.push('Delivery address is required');
+      if (!orderData.customer_phone?.trim()) errors.push('Phone number is required');
+
+      if (errors.length > 0) {
+        throw new Error(errors.join(', '));
+      }
       
       const response = await ordersAPI.createOrder(orderData);
       
@@ -62,10 +81,13 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         await getCustomerOrders();
       }
       
+      console.log('✅ Order created successfully');
       return response.data.orderId;
     } catch (error: any) {
-      console.error('Failed to create order:', error);
-      throw new Error(error.response?.data?.error || 'Failed to create order');
+      console.error('❌ Failed to create order:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to create order';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -73,6 +95,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
   const updateOrderStatus = async (orderId: string, status: Order['status'], agentId?: string): Promise<void> => {
     try {
+      setError(null);
+      console.log(`🔄 Updating order ${orderId} status to ${status}...`);
+      
       await ordersAPI.updateOrderStatus(orderId, { status, agent_id: agentId });
       
       // Update local state
@@ -81,19 +106,30 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
           ? { ...order, status, updated_at: new Date().toISOString(), ...(agentId && { agent_id: agentId }) }
           : order
       ));
+      
+      console.log('✅ Order status updated successfully');
     } catch (error: any) {
-      console.error('Failed to update order status:', error);
-      throw new Error(error.response?.data?.error || 'Failed to update order status');
+      console.error('❌ Failed to update order status:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to update order status';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
   const getCustomerOrders = async (): Promise<void> => {
     try {
       setLoading(true);
+      setError(null);
+      console.log('🔄 Fetching customer orders...');
+      
       const response = await ordersAPI.getCustomerOrders();
-      setOrders(response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch customer orders:', error);
+      const orderData = response.data || [];
+      
+      console.log(`✅ Fetched ${orderData.length} customer orders`);
+      setOrders(orderData);
+    } catch (error: any) {
+      console.error('❌ Failed to fetch customer orders:', error);
+      setError('Failed to load orders');
       setOrders([]);
     } finally {
       setLoading(false);
@@ -103,10 +139,17 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const getRestaurantOrders = async (): Promise<void> => {
     try {
       setLoading(true);
+      setError(null);
+      console.log('🔄 Fetching restaurant orders...');
+      
       const response = await ordersAPI.getRestaurantOrders();
-      setOrders(response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch restaurant orders:', error);
+      const orderData = response.data || [];
+      
+      console.log(`✅ Fetched ${orderData.length} restaurant orders`);
+      setOrders(orderData);
+    } catch (error: any) {
+      console.error('❌ Failed to fetch restaurant orders:', error);
+      setError('Failed to load orders');
       setOrders([]);
     } finally {
       setLoading(false);
@@ -115,10 +158,13 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
   const getAvailableDeliveries = async (): Promise<Order[]> => {
     try {
+      console.log('🔄 Fetching available deliveries...');
       const response = await ordersAPI.getAvailableDeliveries();
-      return response.data || [];
-    } catch (error) {
-      console.error('Failed to fetch available deliveries:', error);
+      const deliveries = response.data || [];
+      console.log(`✅ Fetched ${deliveries.length} available deliveries`);
+      return deliveries;
+    } catch (error: any) {
+      console.error('❌ Failed to fetch available deliveries:', error);
       return [];
     }
   };
@@ -126,10 +172,17 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const getAgentOrders = async (): Promise<void> => {
     try {
       setLoading(true);
+      setError(null);
+      console.log('🔄 Fetching agent orders...');
+      
       const response = await ordersAPI.getAgentOrders();
-      setOrders(response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch agent orders:', error);
+      const orderData = response.data || [];
+      
+      console.log(`✅ Fetched ${orderData.length} agent orders`);
+      setOrders(orderData);
+    } catch (error: any) {
+      console.error('❌ Failed to fetch agent orders:', error);
+      setError('Failed to load orders');
       setOrders([]);
     } finally {
       setLoading(false);
@@ -138,6 +191,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
   const acceptDelivery = async (orderId: string): Promise<void> => {
     try {
+      setError(null);
+      console.log(`🔄 Accepting delivery for order ${orderId}...`);
+      
       await ordersAPI.acceptDelivery(orderId);
       
       // Update local state
@@ -146,9 +202,13 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
           ? { ...order, status: 'in_transit', agent_id: user?.id, updated_at: new Date().toISOString() }
           : order
       ));
+      
+      console.log('✅ Delivery accepted successfully');
     } catch (error: any) {
-      console.error('Failed to accept delivery:', error);
-      throw new Error(error.response?.data?.error || 'Failed to accept delivery');
+      console.error('❌ Failed to accept delivery:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to accept delivery';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
@@ -156,13 +216,15 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     <OrderContext.Provider value={{
       orders,
       loading,
+      error,
       createOrder,
       updateOrderStatus,
       getCustomerOrders,
       getRestaurantOrders,
       getAvailableDeliveries,
       getAgentOrders,
-      acceptDelivery
+      acceptDelivery,
+      clearError
     }}>
       {children}
     </OrderContext.Provider>

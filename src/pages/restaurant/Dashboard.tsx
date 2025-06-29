@@ -5,11 +5,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurants } from '../../contexts/RestaurantContext';
 import { useMenu } from '../../contexts/MenuContext';
 import { cameroonianTowns } from '../../data/mockData';
-import { UtensilsCrossed, ShoppingBag, DollarSign, Clock, TrendingUp, Plus, Eye, MapPin, Phone, X } from 'lucide-react';
+import { UtensilsCrossed, ShoppingBag, DollarSign, Clock, TrendingUp, Plus, Eye, MapPin, Phone, X, AlertCircle } from 'lucide-react';
 
 export default function RestaurantDashboard() {
   const { user } = useAuth();
-  const { myRestaurant, createRestaurant, fetchMyRestaurant } = useRestaurants();
+  const { myRestaurant, createRestaurant, fetchMyRestaurant, loading: restaurantLoading, error: restaurantError, clearError } = useRestaurants();
   const { menuItems, fetchMenuItems } = useMenu();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -42,20 +42,21 @@ export default function RestaurantDashboard() {
   const availableCategories = ['Traditional', 'African', 'French', 'Fine Dining', 'Chicken', 'Fast Food', 'Healthy', 'Salads', 'Seafood', 'Vegetarian', 'Beverages', 'Desserts'];
 
   const validateForm = () => {
-    if (!formData.name.trim()) return 'Restaurant name is required';
-    if (!formData.description.trim()) return 'Description is required';
-    if (!formData.town) return 'Town is required';
-    if (!formData.phone.trim()) return 'Phone number is required';
-    if (!formData.address.trim()) return 'Address is required';
-    if (!formData.delivery_time.trim()) return 'Delivery time is required';
+    const errors = [];
+    if (!formData.name.trim()) errors.push('Restaurant name is required');
+    if (!formData.description.trim()) errors.push('Description is required');
+    if (!formData.town) errors.push('Town is required');
+    if (!formData.phone.trim()) errors.push('Phone number is required');
+    if (!formData.address.trim()) errors.push('Address is required');
+    if (!formData.delivery_time.trim()) errors.push('Delivery time is required');
     if (!formData.delivery_fee || isNaN(Number(formData.delivery_fee)) || Number(formData.delivery_fee) < 0) {
-      return 'Valid delivery fee is required';
+      errors.push('Valid delivery fee is required');
     }
     if (!formData.min_order || isNaN(Number(formData.min_order)) || Number(formData.min_order) < 0) {
-      return 'Valid minimum order amount is required';
+      errors.push('Valid minimum order amount is required');
     }
-    if (formData.categories.length === 0) return 'At least one category must be selected';
-    return null;
+    if (formData.categories.length === 0) errors.push('At least one category must be selected');
+    return errors;
   };
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {
@@ -63,9 +64,9 @@ export default function RestaurantDashboard() {
     if (!user) return;
 
     // Validate form
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join(', '));
       return;
     }
 
@@ -86,7 +87,7 @@ export default function RestaurantDashboard() {
         address: formData.address.trim()
       };
 
-      console.log('Submitting restaurant data:', restaurantData);
+      console.log('🔄 Submitting restaurant data:', restaurantData);
 
       await createRestaurant(restaurantData);
       setShowCreateForm(false);
@@ -104,9 +105,8 @@ export default function RestaurantDashboard() {
       });
       setError('');
     } catch (error: any) {
-      console.error('Failed to create restaurant:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to create restaurant. Please try again.';
-      setError(errorMessage);
+      console.error('❌ Failed to create restaurant:', error);
+      setError(error.message || 'Failed to create restaurant. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -121,9 +121,47 @@ export default function RestaurantDashboard() {
     }));
   };
 
+  const closeForm = () => {
+    setShowCreateForm(false);
+    setError('');
+    clearError();
+    setFormData({
+      name: '',
+      description: '',
+      town: '',
+      phone: '',
+      address: '',
+      delivery_time: '',
+      delivery_fee: '',
+      min_order: '',
+      categories: [],
+      image: ''
+    });
+  };
+
+  if (restaurantLoading) {
+    return (
+      <Layout title="Restaurant Dashboard">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+          <span className="ml-3 text-gray-600">Loading restaurant...</span>
+        </div>
+      </Layout>
+    );
+  }
+
   if (!myRestaurant) {
     return (
       <Layout title="Restaurant Dashboard">
+        {restaurantError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              <span className="text-red-700">{restaurantError}</span>
+            </div>
+          </div>
+        )}
+        
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center border border-orange-100">
           <UtensilsCrossed className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Create Your Restaurant Profile</h2>
@@ -146,19 +184,16 @@ export default function RestaurantDashboard() {
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-2xl font-bold text-gray-900">Create Restaurant Profile</h3>
                   <button
-                    onClick={() => {
-                      setShowCreateForm(false);
-                      setError('');
-                    }}
+                    onClick={closeForm}
                     className="text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-6 w-6" />
                   </button>
                 </div>
 
-                {error && (
+                {(error || restaurantError) && (
                   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
-                    {error}
+                    {error || restaurantError}
                   </div>
                 )}
 
@@ -337,10 +372,7 @@ export default function RestaurantDashboard() {
                   <div className="flex space-x-3 pt-4">
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowCreateForm(false);
-                        setError('');
-                      }}
+                      onClick={closeForm}
                       className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                     >
                       Cancel
