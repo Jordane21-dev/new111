@@ -60,13 +60,31 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
   const createRestaurant = async (restaurantData: any): Promise<string> => {
     try {
+      console.log('Creating restaurant with data:', restaurantData);
+      
+      // Validate required fields on frontend
+      const requiredFields = ['name', 'description', 'town', 'address', 'phone', 'delivery_time', 'delivery_fee', 'min_order', 'categories'];
+      for (const field of requiredFields) {
+        if (!restaurantData[field] || (Array.isArray(restaurantData[field]) && restaurantData[field].length === 0)) {
+          throw new Error(`${field} is required`);
+        }
+      }
+
       const response = await restaurantsAPI.createRestaurant(restaurantData);
       await fetchMyRestaurant();
       await fetchRestaurants();
       return response.data.restaurantId;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create restaurant:', error);
-      throw error;
+      
+      // Re-throw the error with the server message if available
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('Failed to create restaurant. Please try again.');
+      }
     }
   };
 

@@ -100,6 +100,17 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
       categories
     } = req.body;
 
+    // Validate required fields
+    if (!name || !description || !town || !address || !phone || !delivery_time || !delivery_fee || !min_order) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'All required fields must be provided' });
+    }
+
+    if (!categories || !Array.isArray(categories) || categories.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'At least one category must be selected' });
+    }
+
     // Check if owner already has a restaurant
     const [existingRestaurants] = await connection.execute(
       'SELECT id FROM restaurants_info WHERE user_id = ?',
@@ -116,7 +127,18 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
       `INSERT INTO restaurants_info 
        (user_id, name, description, image, town, address, phone, delivery_time, delivery_fee, min_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, name, description, image, town, address, phone, delivery_time, delivery_fee, min_order]
+      [
+        req.user.id, 
+        name, 
+        description, 
+        image || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg', 
+        town, 
+        address, 
+        phone, 
+        delivery_time, 
+        parseFloat(delivery_fee), 
+        parseFloat(min_order)
+      ]
     );
 
     const restaurantId = result.insertId;
@@ -140,7 +162,17 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
   } catch (error) {
     await connection.rollback();
     console.error('Create restaurant error:', error);
-    res.status(500).json({ error: 'Failed to create restaurant' });
+    
+    // Provide more specific error messages
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'A restaurant with this information already exists' });
+    } else if (error.code === 'ER_DATA_TOO_LONG') {
+      res.status(400).json({ error: 'One or more fields exceed the maximum length' });
+    } else if (error.code === 'ER_BAD_NULL_ERROR') {
+      res.status(400).json({ error: 'Required field is missing' });
+    } else {
+      res.status(500).json({ error: 'Failed to create restaurant. Please check your input and try again.' });
+    }
   } finally {
     connection.release();
   }
@@ -193,8 +225,8 @@ router.put('/:id', authenticateToken, requireRole(['owner', 'admin']), async (re
     if (address !== undefined) { updateFields.push('address = ?'); updateValues.push(address); }
     if (phone !== undefined) { updateFields.push('phone = ?'); updateValues.push(phone); }
     if (delivery_time !== undefined) { updateFields.push('delivery_time = ?'); updateValues.push(delivery_time); }
-    if (delivery_fee !== undefined) { updateFields.push('delivery_fee = ?'); updateValues.push(delivery_fee); }
-    if (min_order !== undefined) { updateFields.push('min_order = ?'); updateValues.push(min_order); }
+    if (delivery_fee !== undefined) { updateFields.push('delivery_fee = ?'); updateValues.push(parseFloat(delivery_fee)); }
+    if (min_order !== undefined) { updateFields.push('min_order = ?'); updateValues.push(parseFloat(min_order)); }
     if (is_active !== undefined) { updateFields.push('is_active = ?'); updateValues.push(is_active); }
 
     if (updateFields.length > 0) {
