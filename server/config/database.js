@@ -106,7 +106,8 @@ async function adaptToExistingSchema() {
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_restaurant (user_id)
       )
     `);
     console.log('✓ Restaurants info table ready');
@@ -117,7 +118,8 @@ async function adaptToExistingSchema() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         restaurant_id INT NOT NULL,
         category VARCHAR(100) NOT NULL,
-        FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants_info(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_restaurant_category (restaurant_id, category)
       )
     `);
     console.log('✓ Restaurant categories table ready');

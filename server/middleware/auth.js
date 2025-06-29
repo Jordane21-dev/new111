@@ -23,8 +23,10 @@ export async function authenticateToken(req, res, next) {
     }
 
     req.user = users[0];
+    console.log('Authenticated user:', req.user);
     next();
   } catch (error) {
+    console.error('Auth error:', error);
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
 }
@@ -32,6 +34,7 @@ export async function authenticateToken(req, res, next) {
 export function requireRole(roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
+      console.log('Role check failed. User role:', req.user?.role, 'Required roles:', roles);
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();

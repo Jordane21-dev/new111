@@ -100,8 +100,10 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
       categories
     } = req.body;
 
+    console.log('Creating restaurant with data:', req.body);
+
     // Validate required fields
-    if (!name || !description || !town || !address || !phone || !delivery_time || !delivery_fee || !min_order) {
+    if (!name || !description || !town || !address || !phone || !delivery_time || delivery_fee === undefined || min_order === undefined) {
       await connection.rollback();
       return res.status(400).json({ error: 'All required fields must be provided' });
     }
@@ -109,6 +111,20 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
     if (!categories || !Array.isArray(categories) || categories.length === 0) {
       await connection.rollback();
       return res.status(400).json({ error: 'At least one category must be selected' });
+    }
+
+    // Validate numeric fields
+    const deliveryFeeNum = parseFloat(delivery_fee);
+    const minOrderNum = parseFloat(min_order);
+
+    if (isNaN(deliveryFeeNum) || deliveryFeeNum < 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Invalid delivery fee' });
+    }
+
+    if (isNaN(minOrderNum) || minOrderNum < 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Invalid minimum order amount' });
     }
 
     // Check if owner already has a restaurant
@@ -129,31 +145,34 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.user.id, 
-        name, 
-        description, 
-        image || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg', 
+        name.trim(), 
+        description.trim(), 
+        image?.trim() || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg', 
         town, 
-        address, 
-        phone, 
-        delivery_time, 
-        parseFloat(delivery_fee), 
-        parseFloat(min_order)
+        address.trim(), 
+        phone.trim(), 
+        delivery_time.trim(), 
+        deliveryFeeNum, 
+        minOrderNum
       ]
     );
 
     const restaurantId = result.insertId;
+    console.log('Restaurant created with ID:', restaurantId);
 
     // Insert categories
     if (categories && categories.length > 0) {
       for (const category of categories) {
         await connection.execute(
           'INSERT INTO restaurant_categories (restaurant_id, category) VALUES (?, ?)',
-          [restaurantId, category]
+          [restaurantId, category.trim()]
         );
       }
+      console.log('Categories inserted:', categories);
     }
 
     await connection.commit();
+    console.log('Restaurant creation transaction committed');
 
     res.status(201).json({
       message: 'Restaurant created successfully',
@@ -165,11 +184,17 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
     
     // Provide more specific error messages
     if (error.code === 'ER_DUP_ENTRY') {
-      res.status(400).json({ error: 'A restaurant with this information already exists' });
+      if (error.message.includes('unique_user_restaurant')) {
+        res.status(400).json({ error: 'You already have a restaurant registered' });
+      } else {
+        res.status(400).json({ error: 'A restaurant with this information already exists' });
+      }
     } else if (error.code === 'ER_DATA_TOO_LONG') {
       res.status(400).json({ error: 'One or more fields exceed the maximum length' });
     } else if (error.code === 'ER_BAD_NULL_ERROR') {
       res.status(400).json({ error: 'Required field is missing' });
+    } else if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+      res.status(400).json({ error: 'Invalid user reference' });
     } else {
       res.status(500).json({ error: 'Failed to create restaurant. Please check your input and try again.' });
     }
@@ -218,13 +243,13 @@ router.put('/:id', authenticateToken, requireRole(['owner', 'admin']), async (re
     const updateFields = [];
     const updateValues = [];
 
-    if (name !== undefined) { updateFields.push('name = ?'); updateValues.push(name); }
-    if (description !== undefined) { updateFields.push('description = ?'); updateValues.push(description); }
-    if (image !== undefined) { updateFields.push('image = ?'); updateValues.push(image); }
+    if (name !== undefined) { updateFields.push('name = ?'); updateValues.push(name.trim()); }
+    if (description !== undefined) { updateFields.push('description = ?'); updateValues.push(description.trim()); }
+    if (image !== undefined) { updateFields.push('image = ?'); updateValues.push(image.trim()); }
     if (town !== undefined) { updateFields.push('town = ?'); updateValues.push(town); }
-    if (address !== undefined) { updateFields.push('address = ?'); updateValues.push(address); }
-    if (phone !== undefined) { updateFields.push('phone = ?'); updateValues.push(phone); }
-    if (delivery_time !== undefined) { updateFields.push('delivery_time = ?'); updateValues.push(delivery_time); }
+    if (address !== undefined) { updateFields.push('address = ?'); updateValues.push(address.trim()); }
+    if (phone !== undefined) { updateFields.push('phone = ?'); updateValues.push(phone.trim()); }
+    if (delivery_time !== undefined) { updateFields.push('delivery_time = ?'); updateValues.push(delivery_time.trim()); }
     if (delivery_fee !== undefined) { updateFields.push('delivery_fee = ?'); updateValues.push(parseFloat(delivery_fee)); }
     if (min_order !== undefined) { updateFields.push('min_order = ?'); updateValues.push(parseFloat(min_order)); }
     if (is_active !== undefined) { updateFields.push('is_active = ?'); updateValues.push(is_active); }
@@ -248,7 +273,7 @@ router.put('/:id', authenticateToken, requireRole(['owner', 'admin']), async (re
         for (const category of categories) {
           await connection.execute(
             'INSERT INTO restaurant_categories (restaurant_id, category) VALUES (?, ?)',
-            [restaurantId, category]
+            [restaurantId, category.trim()]
           );
         }
       }
