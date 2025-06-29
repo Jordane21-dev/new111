@@ -33,10 +33,13 @@ export function MenuProvider({ children }: { children: React.ReactNode }) {
   const fetchMenuItems = async (restaurantId: string) => {
     try {
       setLoading(true);
+      console.log('Fetching menu items for restaurant:', restaurantId);
       const response = await menuAPI.getMenuItems(restaurantId);
-      setMenuItems(response.data);
+      console.log('Menu items response:', response.data);
+      setMenuItems(response.data || []);
     } catch (error) {
       console.error('Failed to fetch menu items:', error);
+      setMenuItems([]);
     } finally {
       setLoading(false);
     }
@@ -94,8 +97,10 @@ export function MenuProvider({ children }: { children: React.ReactNode }) {
 
   const getMenuByRestaurant = async (restaurantId: string): Promise<MenuItem[]> => {
     try {
+      console.log('Getting menu for restaurant:', restaurantId);
       const response = await menuAPI.getMenuItems(restaurantId);
-      return response.data;
+      console.log('Menu response:', response.data);
+      return response.data || [];
     } catch (error) {
       console.error('Failed to get menu by restaurant:', error);
       return [];

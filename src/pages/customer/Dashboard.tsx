@@ -28,16 +28,7 @@ export default function CustomerDashboard() {
     return matchesSearch && matchesTown && matchesCategory && restaurant.is_active;
   });
 
-  const allCategories = [...new Set(restaurants.flatMap(r => r.categories))];
-
-  const getRestaurantMenuCount = async (restaurantId: string) => {
-    try {
-      const menuItems = await getMenuByRestaurant(restaurantId);
-      return menuItems.filter(item => item.is_available).length;
-    } catch (error) {
-      return 0;
-    }
-  };
+  const allCategories = [...new Set(restaurants.flatMap(r => r.categories || []))];
 
   if (loading) {
     return (
@@ -162,11 +153,15 @@ function RestaurantCard({ restaurant, featured = false }: { restaurant: any; fea
         const menuItems = await getMenuByRestaurant(restaurant.id);
         setMenuCount(menuItems.filter(item => item.is_available).length);
       } catch (error) {
+        console.error('Failed to fetch menu count:', error);
         setMenuCount(0);
       }
     };
-    fetchMenuCount();
-  }, [restaurant.id]);
+    
+    if (restaurant.id) {
+      fetchMenuCount();
+    }
+  }, [restaurant.id, getMenuByRestaurant]);
 
   const cardClass = featured 
     ? "bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 border border-orange-100"
@@ -206,7 +201,7 @@ function RestaurantCard({ restaurant, featured = false }: { restaurant: any; fea
         </div>
         
         <div className="flex flex-wrap gap-1 mb-3">
-          {restaurant.categories.slice(0, 2).map((category: string) => (
+          {restaurant.categories?.slice(0, 2).map((category: string) => (
             <span key={category} className="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full">
               {category}
             </span>

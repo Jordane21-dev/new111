@@ -24,7 +24,9 @@ router.get('/restaurant/:restaurantId', async (req, res) => {
 
     query += ' ORDER BY category, item_name';
 
+    console.log('Executing menu query:', query, 'with params:', params);
     const [menuItems] = await pool.execute(query, params);
+    console.log('Found menu items:', menuItems.length);
     
     // Transform to match frontend expectations
     const transformedItems = menuItems.map(item => ({
@@ -39,6 +41,7 @@ router.get('/restaurant/:restaurantId', async (req, res) => {
       image: item.image || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg'
     }));
 
+    console.log('Transformed items:', transformedItems);
     res.json(transformedItems);
   } catch (error) {
     console.error('Get menu items error:', error);

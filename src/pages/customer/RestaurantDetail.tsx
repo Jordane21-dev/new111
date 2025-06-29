@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useCart } from '../../contexts/CartContext';
@@ -9,12 +9,53 @@ import { Star, Clock, Truck, Plus, Minus, ArrowLeft, ShoppingCart } from 'lucide
 export default function RestaurantDetail() {
   const { id } = useParams<{ id: string }>();
   const { addItem, items, updateQuantity, total } = useCart();
-  const { restaurants } = useRestaurants();
-  const { getMenuByRestaurant } = useMenu();
+  const { restaurants, fetchRestaurants } = useRestaurants();
+  const { menuItems, fetchMenuItems, loading } = useMenu();
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [restaurant, setRestaurant] = useState<any>(null);
+  const [loadingRestaurant, setLoadingRestaurant] = useState(true);
 
-  const restaurant = restaurants.find(r => r.id === id);
-  const menuItems = restaurant ? getMenuByRestaurant(restaurant.id).filter(item => item.isAvailable) : [];
+  // Fetch restaurants and find the current one
+  useEffect(() => {
+    const loadRestaurant = async () => {
+      try {
+        setLoadingRestaurant(true);
+        await fetchRestaurants();
+      } catch (error) {
+        console.error('Failed to fetch restaurants:', error);
+      } finally {
+        setLoadingRestaurant(false);
+      }
+    };
+    
+    loadRestaurant();
+  }, []);
+
+  // Find restaurant from the list
+  useEffect(() => {
+    if (restaurants.length > 0 && id) {
+      const foundRestaurant = restaurants.find(r => r.id === id);
+      setRestaurant(foundRestaurant);
+    }
+  }, [restaurants, id]);
+
+  // Fetch menu items when restaurant is found
+  useEffect(() => {
+    if (restaurant?.id) {
+      console.log('Fetching menu for restaurant:', restaurant.id);
+      fetchMenuItems(restaurant.id);
+    }
+  }, [restaurant]);
+
+  if (loadingRestaurant) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!restaurant) {
     return (
@@ -29,21 +70,22 @@ export default function RestaurantDetail() {
     );
   }
 
-  const categories = [...new Set(menuItems.map(item => item.category))];
+  const availableMenuItems = menuItems.filter(item => item.is_available);
+  const categories = [...new Set(availableMenuItems.map(item => item.category))];
   const filteredMenuItems = selectedCategory 
-    ? menuItems.filter(item => item.category === selectedCategory)
-    : menuItems;
+    ? availableMenuItems.filter(item => item.category === selectedCategory)
+    : availableMenuItems;
 
   const getItemQuantity = (itemId: string) => {
     const cartItem = items.find(item => item.id === itemId);
     return cartItem ? cartItem.quantity : 0;
   };
 
-  const handleAddToCart = (menuItem: typeof menuItems[0]) => {
+  const handleAddToCart = (menuItem: any) => {
     addItem({
       id: menuItem.id,
-      name: menuItem.name,
-      price: menuItem.price,
+      name: menuItem.item_name,
+      price: menuItem.item_price,
       restaurantId: restaurant.id,
       restaurantName: restaurant.name,
       image: menuItem.image
@@ -88,21 +130,21 @@ export default function RestaurantDetail() {
             
             <div className="flex items-center space-x-2 text-gray-600">
               <Clock className="h-5 w-5" />
-              <span>{restaurant.deliveryTime}</span>
+              <span>{restaurant.delivery_time}</span>
             </div>
             
             <div className="flex items-center space-x-2 text-gray-600">
               <Truck className="h-5 w-5" />
-              <span>{restaurant.deliveryFee} XAF delivery</span>
+              <span>{restaurant.delivery_fee} XAF delivery</span>
             </div>
             
             <div className="text-gray-600">
-              <span className="font-medium">Min order:</span> {restaurant.minOrder.toLocaleString()} XAF
+              <span className="font-medium">Min order:</span> {restaurant.min_order?.toLocaleString()} XAF
             </div>
           </div>
           
           <div className="mt-4 flex flex-wrap gap-2">
-            {restaurant.categories.map(category => (
+            {restaurant.categories?.map((category: string) => (
               <span key={category} className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-sm font-medium">
                 {category}
               </span>
@@ -125,7 +167,7 @@ export default function RestaurantDetail() {
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                All Items ({menuItems.length})
+                All Items ({availableMenuItems.length})
               </button>
               {categories.map(category => (
                 <button
@@ -137,7 +179,7 @@ export default function RestaurantDetail() {
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
-                  {category} ({menuItems.filter(item => item.category === category).length})
+                  {category} ({availableMenuItems.filter(item => item.category === category).length})
                 </button>
               ))}
             </div>
@@ -170,80 +212,88 @@ export default function RestaurantDetail() {
             {selectedCategory || 'All Items'}
           </h2>
           
-          <div className="grid md:grid-cols-2 gap-6">
-            {filteredMenuItems.map((item) => {
-              const quantity = getItemQuantity(item.id);
-              
-              return (
-                <div key={item.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-100">
-                  <div className="relative">
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-full h-40 object-cover"
-                    />
-                    <div className="absolute top-3 right-3 bg-white bg-opacity-90 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-medium">
-                      {item.prepTime} min
-                    </div>
-                  </div>
-                  
-                  <div className="p-4">
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">{item.name}</h3>
-                    <p className="text-gray-600 mb-3 text-sm line-clamp-2">{item.description}</p>
-                    
-                    <div className="flex justify-between items-center mb-4">
-                      <span className="text-xl font-bold text-orange-600">
-                        {item.price.toLocaleString()} XAF
-                      </span>
-                      <span className="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">
-                        {item.category}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      {quantity > 0 ? (
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={() => updateQuantity(item.id, quantity - 1)}
-                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <span className="font-semibold text-lg min-w-[2rem] text-center">{quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.id, quantity + 1)}
-                            className="bg-orange-600 hover:bg-orange-700 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => handleAddToCart(item)}
-                          className="bg-orange-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-700 transition-colors flex items-center space-x-2"
-                        >
-                          <Plus className="h-4 w-4" />
-                          <span>Add to Cart</span>
-                        </button>
-                      )}
-                      
-                      <div className="text-sm text-gray-500">
-                        Prep: {item.prepTime}min
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {filteredMenuItems.length === 0 && (
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+            </div>
+          ) : filteredMenuItems.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-gray-400 mb-4">
                 <ShoppingCart className="h-12 w-12 mx-auto" />
               </div>
-              <h3 className="text-xl font-medium text-gray-900 mb-2">No items found</h3>
-              <p className="text-gray-600">Try selecting a different category.</p>
+              <h3 className="text-xl font-medium text-gray-900 mb-2">No items available</h3>
+              <p className="text-gray-600">
+                {selectedCategory 
+                  ? 'No items found in this category. Try selecting a different category.' 
+                  : 'This restaurant hasn\'t added any menu items yet.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-6">
+              {filteredMenuItems.map((item) => {
+                const quantity = getItemQuantity(item.id);
+                
+                return (
+                  <div key={item.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-100">
+                    <div className="relative">
+                      <img
+                        src={item.image}
+                        alt={item.item_name}
+                        className="w-full h-40 object-cover"
+                      />
+                      <div className="absolute top-3 right-3 bg-white bg-opacity-90 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-medium">
+                        {item.prep_time} min
+                      </div>
+                    </div>
+                    
+                    <div className="p-4">
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">{item.item_name}</h3>
+                      <p className="text-gray-600 mb-3 text-sm line-clamp-2">{item.item_description}</p>
+                      
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-xl font-bold text-orange-600">
+                          {item.item_price.toLocaleString()} XAF
+                        </span>
+                        <span className="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">
+                          {item.category}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        {quantity > 0 ? (
+                          <div className="flex items-center space-x-3">
+                            <button
+                              onClick={() => updateQuantity(item.id, quantity - 1)}
+                              className="bg-gray-200 hover:bg-gray-300 text-gray-700 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                            <span className="font-semibold text-lg min-w-[2rem] text-center">{quantity}</span>
+                            <button
+                              onClick={() => updateQuantity(item.id, quantity + 1)}
+                              className="bg-orange-600 hover:bg-orange-700 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleAddToCart(item)}
+                            className="bg-orange-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-700 transition-colors flex items-center space-x-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span>Add to Cart</span>
+                          </button>
+                        )}
+                        
+                        <div className="text-sm text-gray-500">
+                          Prep: {item.prep_time}min
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
