@@ -133,7 +133,14 @@ async function createAllTables() {
     `);
     console.log('✅ Menu items table ready');
 
-    // Orders table - FIXED with proper column names
+    // Drop existing orders table if it exists with wrong schema
+    await pool.execute(`DROP TABLE IF EXISTS order_items`);
+    await pool.execute(`DROP TABLE IF EXISTS payments`);
+    await pool.execute(`DROP TABLE IF EXISTS delivery_locations`);
+    await pool.execute(`DROP TABLE IF EXISTS orders`);
+    console.log('🔄 Dropped existing orders-related tables to recreate with correct schema');
+
+    // Orders table - FIXED with correct column names
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -159,7 +166,7 @@ async function createAllTables() {
         INDEX idx_created (created_at)
       )
     `);
-    console.log('✅ Orders table ready');
+    console.log('✅ Orders table ready with correct schema');
 
     // Order items table
     await pool.execute(`
