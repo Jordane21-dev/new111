@@ -19,7 +19,7 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [adminExists, setAdminExists] = useState(false);
+  const [adminExists, setAdminExists] = useState(true); // Default to true to hide admin option initially
   const [checkingAdmin, setCheckingAdmin] = useState(true);
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -31,9 +31,10 @@ export default function Register() {
         setCheckingAdmin(true);
         const response = await authAPI.checkAdmin();
         setAdminExists(response.data.adminExists);
+        console.log('Admin exists:', response.data.adminExists);
       } catch (error) {
         console.error('Failed to check admin status:', error);
-        // If check fails, assume admin exists to be safe
+        // If check fails, assume admin exists to be safe (hide admin option)
         setAdminExists(true);
       } finally {
         setCheckingAdmin(false);
@@ -103,7 +104,7 @@ export default function Register() {
     if (!adminExists) {
       return {
         ...baseRoles,
-        admin: 'Manage the platform (restricted access)'
+        admin: 'Manage the platform (first admin only)'
       };
     }
 

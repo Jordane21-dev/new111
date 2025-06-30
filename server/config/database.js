@@ -40,9 +40,10 @@ export async function initializeDatabase() {
 
     // Create all required tables
     await createAllTables();
-    await createDefaultAdmin();
     
+    // NOTE: Removed automatic admin creation - admin must register manually
     console.log('🎉 Database initialization completed successfully');
+    console.log('⚠️  No default admin created - register the first admin through the UI');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
     throw error;
@@ -252,28 +253,5 @@ async function createAllTables() {
   } catch (error) {
     console.error('❌ Error creating tables:', error);
     throw error;
-  }
-}
-
-async function createDefaultAdmin() {
-  try {
-    const [adminExists] = await pool.execute(
-      'SELECT user_id FROM users WHERE email = ? AND role = ?',
-      ['admin@smartbite.cm', 'admin']
-    );
-
-    if (adminExists.length === 0) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
-      
-      await pool.execute(
-        'INSERT INTO users (name, email, password, role, town, phone_number) VALUES (?, ?, ?, ?, ?, ?)',
-        ['SmartBite Admin', 'admin@smartbite.cm', hashedPassword, 'admin', 'Douala', '+237680938302']
-      );
-      console.log('✅ Default admin user created (admin@smartbite.cm / admin123)');
-    } else {
-      console.log('✅ Default admin user already exists');
-    }
-  } catch (error) {
-    console.log('⚠️  Could not create default admin:', error.message);
   }
 }
