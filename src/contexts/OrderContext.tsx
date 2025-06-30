@@ -190,6 +190,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       return deliveries;
     } catch (error: any) {
       console.error('❌ Failed to fetch available deliveries:', error);
+      setError('Failed to load available deliveries');
       return [];
     }
   };

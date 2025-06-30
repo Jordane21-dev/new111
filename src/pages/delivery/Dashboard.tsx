@@ -1,30 +1,90 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrderContext';
-import { Truck, Package, DollarSign, Clock, TrendingUp, MapPin } from 'lucide-react';
+import { Truck, Package, DollarSign, Clock, TrendingUp, MapPin, AlertCircle } from 'lucide-react';
 
 export default function DeliveryDashboard() {
   const { user } = useAuth();
-  const { getAvailableDeliveries, getOrdersByAgent } = useOrders();
-
-  const availableDeliveries = getAvailableDeliveries();
-  const myDeliveries = user ? getOrdersByAgent(user.id) : [];
-  
-  const activeDeliveries = myDeliveries.filter(order => order.status === 'in_transit');
-  const completedDeliveries = myDeliveries.filter(order => order.status === 'delivered');
-  
-  const totalEarnings = completedDeliveries.reduce((sum, order) => {
-    // Assuming delivery fee is 10% of order total (simplified calculation)
-    return sum + (order.total * 0.1);
-  }, 0);
-
-  const todayDeliveries = completedDeliveries.filter(order => {
-    const today = new Date();
-    const orderDate = new Date(order.createdAt);
-    return orderDate.toDateString() === today.toDateString();
+  const { orders, getAvailableDeliveries, getAgentOrders, loading, error } = useOrders();
+  const [availableDeliveries, setAvailableDeliveries] = useState([]);
+  const [stats, setStats] = useState({
+    available: 0,
+    active: 0,
+    todayDeliveries: 0,
+    totalEarnings: 0
   });
+
+  useEffect(() => {
+    if (user?.role === 'agent') {
+      loadData();
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    try {
+      // Load agent's orders
+      await getAgentOrders();
+      
+      // Load available deliveries
+      const available = await getAvailableDeliveries();
+      setAvailableDeliveries(available);
+      
+      // Calculate stats
+      const activeDeliveries = orders.filter(order => order.status === 'in_transit');
+      const completedDeliveries = orders.filter(order => order.status === 'delivered');
+      
+      const totalEarnings = completedDeliveries.reduce((sum, order) => {
+        // Assuming delivery fee is 10% of order total (simplified calculation)
+        return sum + (order.total * 0.1);
+      }, 0);
+
+      const todayDeliveries = completedDeliveries.filter(order => {
+        const today = new Date();
+        const orderDate = new Date(order.created_at);
+        return orderDate.toDateString() === today.toDateString();
+      });
+
+      setStats({
+        available: available.length,
+        active: activeDeliveries.length,
+        todayDeliveries: todayDeliveries.length,
+        totalEarnings
+      });
+    } catch (error) {
+      console.error('Failed to load delivery data:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout title="Delivery Dashboard">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+          <span className="ml-3 text-gray-600">Loading dashboard...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="Delivery Dashboard">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-red-800 mb-2">Unable to Load Dashboard</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={loadData}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Delivery Dashboard">
@@ -37,7 +97,7 @@ export default function DeliveryDashboard() {
             </div>
             <span className="text-blue-600 text-sm font-medium">Available</span>
           </div>
-          <div className="text-2xl font-bold text-gray-900 mb-1">{availableDeliveries.length}</div>
+          <div className="text-2xl font-bold text-gray-900 mb-1">{stats.available}</div>
           <div className="text-gray-600 text-sm">Available Deliveries</div>
         </div>
 
@@ -48,7 +108,7 @@ export default function DeliveryDashboard() {
             </div>
             <span className="text-orange-600 text-sm font-medium">Active</span>
           </div>
-          <div className="text-2xl font-bold text-gray-900 mb-1">{activeDeliveries.length}</div>
+          <div className="text-2xl font-bold text-gray-900 mb-1">{stats.active}</div>
           <div className="text-gray-600 text-sm">Active Deliveries</div>
         </div>
 
@@ -59,7 +119,7 @@ export default function DeliveryDashboard() {
             </div>
             <span className="text-green-600 text-sm font-medium">Today</span>
           </div>
-          <div className="text-2xl font-bold text-gray-900 mb-1">{todayDeliveries.length}</div>
+          <div className="text-2xl font-bold text-gray-900 mb-1">{stats.todayDeliveries}</div>
           <div className="text-gray-600 text-sm">Deliveries Today</div>
         </div>
 
@@ -71,7 +131,7 @@ export default function DeliveryDashboard() {
             <span className="text-purple-600 text-sm font-medium">Total</span>
           </div>
           <div className="text-2xl font-bold text-gray-900 mb-1">
-            {totalEarnings.toLocaleString()} XAF
+            {stats.totalEarnings.toLocaleString()} XAF
           </div>
           <div className="text-gray-600 text-sm">Total Earnings</div>
         </div>
@@ -92,7 +152,7 @@ export default function DeliveryDashboard() {
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">View Available Jobs</div>
-                  <div className="text-sm text-gray-600">{availableDeliveries.length} available</div>
+                  <div className="text-sm text-gray-600">{stats.available} available</div>
                 </div>
               </div>
               <div className="text-blue-600">→</div>
@@ -105,11 +165,26 @@ export default function DeliveryDashboard() {
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">Active Deliveries</div>
-                  <div className="text-sm text-gray-600">{activeDeliveries.length} in progress</div>
+                  <div className="text-sm text-gray-600">{stats.active} in progress</div>
                 </div>
               </div>
-              <div className="text-orange-600">{activeDeliveries.length}</div>
+              <div className="text-orange-600">{stats.active}</div>
             </div>
+
+            <button
+              onClick={loadData}
+              className="w-full flex items-center justify-center p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl border border-green-200 hover:from-green-100 hover:to-green-200 transition-all duration-200"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="bg-green-600 text-white p-2 rounded-lg">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="font-medium text-gray-900">Refresh Data</div>
+                  <div className="text-sm text-gray-600">Update delivery status</div>
+                </div>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -125,7 +200,7 @@ export default function DeliveryDashboard() {
             </Link>
           </div>
           
-          {myDeliveries.length === 0 ? (
+          {orders.length === 0 ? (
             <div className="text-center py-8">
               <Truck className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No deliveries yet</p>
@@ -133,7 +208,7 @@ export default function DeliveryDashboard() {
             </div>
           ) : (
             <div className="space-y-4">
-              {myDeliveries.slice(0, 5).map((order) => (
+              {orders.slice(0, 5).map((order) => (
                 <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center space-x-3">
                     <div className={`w-3 h-3 rounded-full ${
@@ -143,10 +218,10 @@ export default function DeliveryDashboard() {
                     }`} />
                     <div>
                       <div className="font-medium text-gray-900">#{order.id}</div>
-                      <div className="text-sm text-gray-600">{order.restaurantName}</div>
+                      <div className="text-sm text-gray-600">{order.restaurant_name}</div>
                       <div className="text-xs text-gray-500 flex items-center">
                         <MapPin className="h-3 w-3 mr-1" />
-                        {order.deliveryAddress.substring(0, 30)}...
+                        {order.delivery_address.substring(0, 30)}...
                       </div>
                     </div>
                   </div>
@@ -171,14 +246,14 @@ export default function DeliveryDashboard() {
       </div>
 
       {/* Available Deliveries Preview */}
-      {availableDeliveries.length > 0 && (
+      {stats.available > 0 && (
         <div className="mt-8">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold mb-2">🚚 New Deliveries Available!</h3>
                 <p className="text-blue-100">
-                  {availableDeliveries.length} delivery job{availableDeliveries.length > 1 ? 's' : ''} waiting for pickup
+                  {stats.available} delivery job{stats.available > 1 ? 's' : ''} waiting for pickup
                 </p>
               </div>
               <Link
