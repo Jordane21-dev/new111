@@ -37,6 +37,7 @@ export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (userData) => api.post('/auth/register', userData),
   verify: () => api.get('/auth/verify'),
+  checkAdmin: () => api.get('/auth/check-admin'), // New endpoint to check if admin exists
 };
 
 // Users API

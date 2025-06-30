@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { UtensilsCrossed, User, Mail, Lock, Phone, MapPin, Eye, EyeOff } from 'lucide-react';
+import { authAPI } from '../../services/api';
+import { UtensilsCrossed, User, Mail, Lock, Phone, MapPin, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { cameroonianTowns } from '../../data/mockData';
 
 export default function Register() {
@@ -18,8 +19,29 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [adminExists, setAdminExists] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  // Check if admin already exists on component mount
+  useEffect(() => {
+    const checkAdminExists = async () => {
+      try {
+        setCheckingAdmin(true);
+        const response = await authAPI.checkAdmin();
+        setAdminExists(response.data.adminExists);
+      } catch (error) {
+        console.error('Failed to check admin status:', error);
+        // If check fails, assume admin exists to be safe
+        setAdminExists(true);
+      } finally {
+        setCheckingAdmin(false);
+      }
+    };
+
+    checkAdminExists();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
@@ -42,6 +64,12 @@ export default function Register() {
       return;
     }
 
+    // Additional check for admin role
+    if (formData.role === 'admin' && adminExists) {
+      setError('Admin account already exists. Only one admin account is allowed per system.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -53,19 +81,47 @@ export default function Register() {
       } else {
         setError('Registration failed. Email may already be in use.');
       }
-    } catch (err) {
-      setError('Registration failed. Please try again.');
+    } catch (err: any) {
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const roleDescriptions = {
-    customer: 'Order food from your favorite restaurants',
-    owner: 'Manage your restaurant and menu',
-    agent: 'Deliver food and earn money',
-    admin: 'Manage the platform (restricted access)'
+  const getAvailableRoles = () => {
+    const baseRoles = {
+      customer: 'Order food from your favorite restaurants',
+      owner: 'Manage your restaurant and menu',
+      agent: 'Deliver food and earn money'
+    };
+
+    // Only include admin role if no admin exists yet
+    if (!adminExists) {
+      return {
+        ...baseRoles,
+        admin: 'Manage the platform (restricted access)'
+      };
+    }
+
+    return baseRoles;
   };
+
+  const roleDescriptions = getAvailableRoles();
+
+  if (checkingAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-green-50">
+        <div className="flex items-center space-x-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+          <span className="text-gray-600">Loading registration form...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -115,6 +171,18 @@ export default function Register() {
                 </p>
               </div>
             </div>
+
+            {adminExists && (
+              <div className="bg-red-500 bg-opacity-20 border border-red-300 rounded-lg p-4">
+                <div className="flex items-center space-x-2 mb-2">
+                  <AlertCircle className="h-5 w-5 text-red-200" />
+                  <h4 className="font-semibold text-red-100">Admin Registration Restricted</h4>
+                </div>
+                <p className="text-red-100 text-sm">
+                  An admin account already exists. Only one admin account is allowed per system for security purposes.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -135,7 +203,21 @@ export default function Register() {
 
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg animate-pulse">
-              {error}
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-4 w-4" />
+                <span>{error}</span>
+              </div>
+            </div>
+          )}
+
+          {adminExists && (
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm">
+                  Admin registration is currently disabled. An admin account already exists.
+                </span>
+              </div>
             </div>
           )}
 

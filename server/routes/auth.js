@@ -5,10 +5,42 @@ import { pool } from '../config/database.js';
 
 const router = express.Router();
 
+// Check if admin already exists
+router.get('/check-admin', async (req, res) => {
+  try {
+    const [admins] = await pool.execute(
+      'SELECT COUNT(*) as admin_count FROM users WHERE role = ?',
+      ['admin']
+    );
+    
+    const adminExists = admins[0].admin_count > 0;
+    
+    res.json({ adminExists });
+  } catch (error) {
+    console.error('Check admin error:', error);
+    res.status(500).json({ error: 'Failed to check admin status' });
+  }
+});
+
 // Register
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, role, phone, town } = req.body;
+
+    // Check if trying to register as admin
+    if (role === 'admin') {
+      // Check if admin already exists
+      const [existingAdmins] = await pool.execute(
+        'SELECT user_id FROM users WHERE role = ?',
+        ['admin']
+      );
+
+      if (existingAdmins.length > 0) {
+        return res.status(400).json({ 
+          error: 'Admin account already exists. Only one admin account is allowed per system.' 
+        });
+      }
+    }
 
     // Check if user already exists
     const [existingUsers] = await pool.execute(
