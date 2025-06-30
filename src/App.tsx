@@ -1,10 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// Context providers for state management
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import { OrderProvider } from './contexts/OrderContext';
 import { RestaurantProvider } from './contexts/RestaurantContext';
 import { MenuProvider } from './contexts/MenuContext';
+
+// Page components
 import Landing from './pages/Landing';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
@@ -21,13 +24,21 @@ import AdminUsers from './pages/admin/Users';
 import AdminRestaurants from './pages/admin/Restaurants';
 import './index.css';
 
+/**
+ * Protected Route Component
+ * Ensures only authenticated users with proper roles can access specific routes
+ * @param children - React components to render if authorized
+ * @param allowedRoles - Array of user roles that can access this route
+ */
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user } = useAuth();
   
+  // Redirect to login if not authenticated
   if (!user) {
     return <Navigate to="/login" replace />;
   }
   
+  // Redirect to home if user doesn't have required role
   if (!allowedRoles.includes(user.role)) {
     return <Navigate to="/" replace />;
   }
@@ -35,16 +46,21 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   return <>{children}</>;
 }
 
+/**
+ * App Routes Component
+ * Defines all application routes with role-based access control
+ */
 function AppRoutes() {
   const { user } = useAuth();
   
   return (
     <Routes>
+      {/* Public routes */}
       <Route path="/" element={user ? <Navigate to={`/${user.role}`} replace /> : <Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       
-      {/* Customer Routes */}
+      {/* Customer Routes - Only accessible by customers */}
       <Route path="/customer" element={
         <ProtectedRoute allowedRoles={['customer']}>
           <CustomerDashboard />
@@ -61,7 +77,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       
-      {/* Restaurant Owner Routes */}
+      {/* Restaurant Owner Routes - Only accessible by restaurant owners */}
       <Route path="/owner" element={
         <ProtectedRoute allowedRoles={['owner']}>
           <RestaurantDashboard />
@@ -78,7 +94,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       
-      {/* Delivery Agent Routes */}
+      {/* Delivery Agent Routes - Only accessible by delivery agents */}
       <Route path="/agent" element={
         <ProtectedRoute allowedRoles={['agent']}>
           <DeliveryDashboard />
@@ -90,7 +106,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
       
-      {/* Admin Routes */}
+      {/* Admin Routes - Only accessible by administrators */}
       <Route path="/admin" element={
         <ProtectedRoute allowedRoles={['admin']}>
           <AdminDashboard />
@@ -110,6 +126,11 @@ function AppRoutes() {
   );
 }
 
+/**
+ * Main App Component
+ * Sets up context providers and routing for the entire application
+ * Context hierarchy ensures proper data flow and state management
+ */
 function App() {
   return (
     <AuthProvider>

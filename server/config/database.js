@@ -2,8 +2,13 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 
+// Load environment variables from .env file
 dotenv.config();
 
+/**
+ * Database Configuration
+ * MySQL connection settings with environment variable fallbacks
+ */
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 3306,
@@ -15,8 +20,14 @@ const dbConfig = {
   queueLimit: 0
 };
 
+// Create MySQL connection pool for better performance
 export const pool = mysql.createPool(dbConfig);
 
+/**
+ * Initialize Database
+ * Creates database, tables, and sets up initial data structure
+ * This function is called when the server starts
+ */
 export async function initializeDatabase() {
   try {
     console.log(`🔄 Connecting to MySQL at ${dbConfig.host}:${dbConfig.port}`);
@@ -50,9 +61,13 @@ export async function initializeDatabase() {
   }
 }
 
+/**
+ * Create All Database Tables
+ * Defines the complete database schema for the SmartBite application
+ */
 async function createAllTables() {
   try {
-    // Users table - Core user information
+    // Users table - Core user information for all user types
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS users (
         user_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -72,7 +87,7 @@ async function createAllTables() {
     `);
     console.log('✅ Users table ready');
 
-    // Restaurants table - Restaurant information
+    // Restaurants table - Restaurant information and settings
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS restaurants_info (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -99,7 +114,7 @@ async function createAllTables() {
     `);
     console.log('✅ Restaurants table ready');
 
-    // Restaurant categories table
+    // Restaurant categories table - Many-to-many relationship for restaurant categories
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS restaurant_categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -112,7 +127,7 @@ async function createAllTables() {
     `);
     console.log('✅ Restaurant categories table ready');
 
-    // Menu items table
+    // Menu items table - Individual food items for each restaurant
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS menu_items (
         menu_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -134,14 +149,14 @@ async function createAllTables() {
     `);
     console.log('✅ Menu items table ready');
 
-    // Drop existing orders table if it exists with wrong schema
+    // Clean up existing orders-related tables to recreate with correct schema
     await pool.execute(`DROP TABLE IF EXISTS order_items`);
     await pool.execute(`DROP TABLE IF EXISTS payments`);
     await pool.execute(`DROP TABLE IF EXISTS delivery_locations`);
     await pool.execute(`DROP TABLE IF EXISTS orders`);
     console.log('🔄 Dropped existing orders-related tables to recreate with correct schema');
 
-    // Orders table - FIXED with correct column names
+    // Orders table - Customer orders with delivery and payment information
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -169,7 +184,7 @@ async function createAllTables() {
     `);
     console.log('✅ Orders table ready with correct schema');
 
-    // Order items table
+    // Order items table - Individual items within each order
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS order_items (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -186,7 +201,7 @@ async function createAllTables() {
     `);
     console.log('✅ Order items table ready');
 
-    // Payments table - NEW for payment tracking
+    // Payments table - Payment tracking and mobile money integration
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS payments (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -213,7 +228,7 @@ async function createAllTables() {
     `);
     console.log('✅ Payments table ready');
 
-    // Delivery locations table for tracking
+    // Delivery locations table - GPS tracking for delivery agents
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS delivery_locations (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -231,7 +246,7 @@ async function createAllTables() {
     `);
     console.log('✅ Delivery locations table ready');
 
-    // Reviews table - NEW for user reviews
+    // Reviews table - User reviews and ratings for the platform
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS reviews (
         id INT AUTO_INCREMENT PRIMARY KEY,
