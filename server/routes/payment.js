@@ -117,9 +117,9 @@ router.post('/initiate', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Order ID and phone number are required' });
     }
 
-    // Get order details
+    // Get order details with proper column name handling
     const [orders] = await connection.execute(
-      'SELECT * FROM orders WHERE id = ? AND customer_id = ?',
+      'SELECT id, customer_id, total_amount, payment_status FROM orders WHERE id = ? AND customer_id = ?',
       [order_id, req.user.id]
     );
 
@@ -129,12 +129,35 @@ router.post('/initiate', authenticateToken, async (req, res) => {
     }
 
     const order = orders[0];
+    
+    // Debug log to check order structure
+    console.log('📋 Order details:', {
+      id: order.id,
+      customer_id: order.customer_id,
+      total_amount: order.total_amount,
+      payment_status: order.payment_status
+    });
 
     // Check if order is already paid
     if (order.payment_status === 'paid') {
       await connection.rollback();
       return res.status(400).json({ error: 'Order is already paid' });
     }
+
+    // Safely get the total amount - handle both possible column names
+    let orderTotal = order.total_amount || order.total;
+    
+    // Additional safety check
+    if (!orderTotal || isNaN(Number(orderTotal))) {
+      console.error('❌ Invalid order total:', orderTotal);
+      await connection.rollback();
+      return res.status(400).json({ error: 'Invalid order total amount' });
+    }
+
+    // Ensure orderTotal is a number
+    orderTotal = Number(orderTotal);
+    
+    console.log('💰 Order total amount:', orderTotal);
 
     // Format phone number (ensure it starts with 237)
     let formattedPhone = phone_number.replace(/\D/g, ''); // Remove non-digits
@@ -154,7 +177,7 @@ router.post('/initiate', authenticateToken, async (req, res) => {
 
     // Prepare payment request - matching the Python SDK format
     const paymentData = {
-      amount: order.total.toString(),
+      amount: orderTotal.toString(), // Now safely convert to string
       currency: "XAF",
       from: formattedPhone,
       description: `SmartBite Order #${order_id}`,
@@ -174,7 +197,7 @@ router.post('/initiate', authenticateToken, async (req, res) => {
       [
         order_id,
         req.user.id,
-        order.total,
+        orderTotal,
         formattedPhone,
         'mobile_money',
         paymentResponse.status === 'SUCCESSFUL' ? 'successful' : 'pending',
@@ -244,7 +267,7 @@ router.get('/status/:orderId', authenticateToken, async (req, res) => {
 
     // Get payment details
     const [payments] = await pool.execute(
-      `SELECT p.*, o.total as order_total 
+      `SELECT p.*, o.total_amount as order_total 
        FROM payments p
        JOIN orders o ON p.order_id = o.id
        WHERE p.order_id = ? AND p.user_id = ?
@@ -329,7 +352,7 @@ router.get('/status/:orderId', authenticateToken, async (req, res) => {
 router.get('/history', authenticateToken, async (req, res) => {
   try {
     const [payments] = await pool.execute(
-      `SELECT p.*, o.total as order_total, r.name as restaurant_name
+      `SELECT p.*, o.total_amount as order_total, r.name as restaurant_name
        FROM payments p
        JOIN orders o ON p.order_id = o.id
        JOIN restaurants_info r ON o.restaurant_id = r.id
