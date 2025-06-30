@@ -5,28 +5,98 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// CamPay Configuration
+// CamPay Configuration - Updated with correct endpoints
 const CAMPAY_CONFIG = {
   app_username: "JByBUneb4BceuEyoMu1nKlmyTgVomd-QfokOrs4t4B9tPJS7hhqUtpuxOx5EQ7zpT0xmYw3P6DU6LU0mH2DvaQ",
   app_password: "m-Xuj9EQIT_zeQ5hSn8hLjYlyJT7KnSTHABYVp7tKeHKgsVnF0x6PEcdtZCVaDM0BN5mX-eylX0fhrGGMZBrWg",
   environment: "PROD" // Use "DEV" for demo mode or "PROD" for live mode
 };
 
+// Updated API endpoints - using the correct CamPay API URLs
 const CAMPAY_BASE_URL = CAMPAY_CONFIG.environment === "PROD" 
-  ? "https://www.campay.net/api" 
+  ? "https://campay.net/api" 
   : "https://demo.campay.net/api";
 
 // Get CamPay access token
 async function getCamPayToken() {
   try {
+    console.log('🔑 Getting CamPay token from:', `${CAMPAY_BASE_URL}/token/`);
+    
     const response = await axios.post(`${CAMPAY_BASE_URL}/token/`, {
       username: CAMPAY_CONFIG.app_username,
       password: CAMPAY_CONFIG.app_password
+    }, {
+      timeout: 10000, // 10 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'SmartBite-App/1.0'
+      }
     });
+    
+    console.log('✅ CamPay token response:', response.data);
     return response.data.token;
   } catch (error) {
     console.error('❌ CamPay token error:', error.response?.data || error.message);
+    
+    // If main endpoint fails, try alternative endpoint
+    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      console.log('🔄 Trying alternative CamPay endpoint...');
+      try {
+        const altResponse = await axios.post('https://api.campay.net/token/', {
+          username: CAMPAY_CONFIG.app_username,
+          password: CAMPAY_CONFIG.app_password
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'SmartBite-App/1.0'
+          }
+        });
+        
+        console.log('✅ Alternative CamPay token response:', altResponse.data);
+        return altResponse.data.token;
+      } catch (altError) {
+        console.error('❌ Alternative endpoint also failed:', altError.message);
+        throw new Error('CamPay service is currently unavailable. Please try again later.');
+      }
+    }
+    
     throw new Error('Failed to get CamPay access token');
+  }
+}
+
+// Make payment request to CamPay
+async function makeCamPayRequest(token, paymentData) {
+  const endpoints = [
+    `${CAMPAY_BASE_URL}/collect/`,
+    'https://api.campay.net/collect/',
+    'https://campay.net/api/collect/'
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`🔄 Trying payment endpoint: ${endpoint}`);
+      
+      const response = await axios.post(endpoint, paymentData, {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'SmartBite-App/1.0'
+        },
+        timeout: 15000 // 15 second timeout for payment requests
+      });
+
+      console.log('✅ CamPay payment response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Payment endpoint ${endpoint} failed:`, error.message);
+      
+      if (endpoints.indexOf(endpoint) === endpoints.length - 1) {
+        // This was the last endpoint, throw the error
+        throw error;
+      }
+      // Continue to next endpoint
+    }
   }
 }
 
@@ -82,7 +152,7 @@ router.post('/initiate', authenticateToken, async (req, res) => {
     // Get CamPay token
     const token = await getCamPayToken();
 
-    // Prepare payment request
+    // Prepare payment request - matching the Python SDK format
     const paymentData = {
       amount: order.total.toString(),
       currency: "XAF",
@@ -94,18 +164,7 @@ router.post('/initiate', authenticateToken, async (req, res) => {
     console.log('💰 Payment request data:', paymentData);
 
     // Make payment request to CamPay
-    const paymentResponse = await axios.post(
-      `${CAMPAY_BASE_URL}/collect/`,
-      paymentData,
-      {
-        headers: {
-          'Authorization': `Token ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    console.log('✅ CamPay response:', paymentResponse.data);
+    const paymentResponse = await makeCamPayRequest(token, paymentData);
 
     // Create payment record
     const [paymentResult] = await connection.execute(
@@ -118,15 +177,15 @@ router.post('/initiate', authenticateToken, async (req, res) => {
         order.total,
         formattedPhone,
         'mobile_money',
-        paymentResponse.data.status === 'SUCCESSFUL' ? 'successful' : 'pending',
-        paymentResponse.data.reference || null,
-        paymentResponse.data.external_reference || null,
-        paymentResponse.data.operator || null
+        paymentResponse.status === 'SUCCESSFUL' ? 'successful' : 'pending',
+        paymentResponse.reference || null,
+        paymentResponse.external_reference || null,
+        paymentResponse.operator || null
       ]
     );
 
     // Update order payment status if successful
-    if (paymentResponse.data.status === 'SUCCESSFUL') {
+    if (paymentResponse.status === 'SUCCESSFUL') {
       await connection.execute(
         'UPDATE orders SET payment_status = ? WHERE id = ?',
         ['paid', order_id]
@@ -141,7 +200,7 @@ router.post('/initiate', authenticateToken, async (req, res) => {
     if (io) {
       io.emit('payment-update', {
         orderId: order_id,
-        paymentStatus: paymentResponse.data.status === 'SUCCESSFUL' ? 'paid' : 'pending',
+        paymentStatus: paymentResponse.status === 'SUCCESSFUL' ? 'paid' : 'pending',
         timestamp: new Date()
       });
     }
@@ -149,8 +208,8 @@ router.post('/initiate', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       payment_id: paymentResult.insertId,
-      campay_response: paymentResponse.data,
-      message: paymentResponse.data.status === 'SUCCESSFUL' 
+      campay_response: paymentResponse,
+      message: paymentResponse.status === 'SUCCESSFUL' 
         ? 'Payment successful!' 
         : 'Payment request sent. Please check your phone to complete the payment.'
     });
@@ -164,6 +223,11 @@ router.post('/initiate', authenticateToken, async (req, res) => {
       res.status(400).json({ 
         error: error.response.data.message || 'Payment failed',
         details: error.response.data
+      });
+    } else if (error.message.includes('CamPay service is currently unavailable')) {
+      res.status(503).json({ 
+        error: 'Payment service is temporarily unavailable. Please try again later or use cash on delivery.',
+        fallback: 'cash_on_delivery'
       });
     } else {
       res.status(500).json({ error: 'Payment processing failed. Please try again.' });
@@ -205,7 +269,8 @@ router.get('/status/:orderId', authenticateToken, async (req, res) => {
           {
             headers: {
               'Authorization': `Token ${token}`
-            }
+            },
+            timeout: 10000
           }
         );
 
