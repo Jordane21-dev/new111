@@ -9,7 +9,7 @@ router.get('/', requireRole(['admin']), async (req, res) => {
   try {
     const { role, town, search } = req.query;
     
-    let query = 'SELECT id, name, email, role, phone, town, is_active, created_at FROM users WHERE 1=1';
+    let query = 'SELECT user_id as id, name, email, role, phone_number as phone, town, is_active, created_at FROM users WHERE 1=1';
     const params = [];
 
     if (role) {
@@ -29,10 +29,13 @@ router.get('/', requireRole(['admin']), async (req, res) => {
 
     query += ' ORDER BY created_at DESC';
 
+    console.log('🔄 Fetching users with query:', query);
     const [users] = await pool.execute(query, params);
+    console.log(`✅ Found ${users.length} users`);
+    
     res.json(users);
   } catch (error) {
-    console.error('Get users error:', error);
+    console.error('❌ Get users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
@@ -41,7 +44,7 @@ router.get('/', requireRole(['admin']), async (req, res) => {
 router.get('/profile', async (req, res) => {
   try {
     const [users] = await pool.execute(
-      'SELECT id, name, email, role, phone, town, is_active, created_at FROM users WHERE id = ?',
+      'SELECT user_id as id, name, email, role, phone_number as phone, town, is_active, created_at FROM users WHERE user_id = ?',
       [req.user.id]
     );
 
@@ -65,13 +68,13 @@ router.put('/profile', async (req, res) => {
     const updateValues = [];
 
     if (name !== undefined) { updateFields.push('name = ?'); updateValues.push(name); }
-    if (phone !== undefined) { updateFields.push('phone = ?'); updateValues.push(phone); }
+    if (phone !== undefined) { updateFields.push('phone_number = ?'); updateValues.push(phone); }
     if (town !== undefined) { updateFields.push('town = ?'); updateValues.push(town); }
 
     if (updateFields.length > 0) {
       updateValues.push(req.user.id);
       await pool.execute(
-        `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
+        `UPDATE users SET ${updateFields.join(', ')} WHERE user_id = ?`,
         updateValues
       );
     }
@@ -88,14 +91,17 @@ router.put('/:id/toggle-status', requireRole(['admin']), async (req, res) => {
   try {
     const userId = req.params.id;
 
+    console.log('🔄 Toggling status for user:', userId);
+    
     await pool.execute(
-      'UPDATE users SET is_active = NOT is_active WHERE id = ?',
+      'UPDATE users SET is_active = NOT is_active WHERE user_id = ?',
       [userId]
     );
 
+    console.log('✅ User status toggled successfully');
     res.json({ message: 'User status updated successfully' });
   } catch (error) {
-    console.error('Toggle user status error:', error);
+    console.error('❌ Toggle user status error:', error);
     res.status(500).json({ error: 'Failed to update user status' });
   }
 });
@@ -105,9 +111,11 @@ router.delete('/:id', requireRole(['admin']), async (req, res) => {
   try {
     const userId = req.params.id;
 
+    console.log('🔄 Deleting user:', userId);
+
     // Don't allow deleting admin users
     const [users] = await pool.execute(
-      'SELECT role FROM users WHERE id = ?',
+      'SELECT role FROM users WHERE user_id = ?',
       [userId]
     );
 
@@ -119,11 +127,12 @@ router.delete('/:id', requireRole(['admin']), async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete admin users' });
     }
 
-    await pool.execute('DELETE FROM users WHERE id = ?', [userId]);
+    await pool.execute('DELETE FROM users WHERE user_id = ?', [userId]);
 
+    console.log('✅ User deleted successfully');
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    console.error('Delete user error:', error);
+    console.error('❌ Delete user error:', error);
     res.status(500).json({ error: 'Failed to delete user' });
   }
 });

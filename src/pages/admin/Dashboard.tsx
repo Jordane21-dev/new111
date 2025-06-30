@@ -13,6 +13,7 @@ export default function AdminDashboard() {
   const { orders, getCustomerOrders, loading: ordersLoading } = useOrders();
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -22,6 +23,9 @@ export default function AdminDashboard() {
 
   const loadAdminData = async () => {
     try {
+      setError('');
+      console.log('🔄 Loading admin dashboard data...');
+      
       // Fetch restaurants
       await fetchRestaurants();
       
@@ -29,11 +33,11 @@ export default function AdminDashboard() {
       setLoadingUsers(true);
       const usersResponse = await usersAPI.getUsers();
       setUsers(usersResponse.data || []);
+      console.log('✅ Admin data loaded successfully');
       
-      // Note: Orders are typically fetched per user role, 
-      // but admin might need a different endpoint for all orders
     } catch (error) {
-      console.error('Failed to load admin data:', error);
+      console.error('❌ Failed to load admin data:', error);
+      setError('Failed to load dashboard data');
     } finally {
       setLoadingUsers(false);
     }
@@ -63,6 +67,24 @@ export default function AdminDashboard() {
         <div className="flex justify-center items-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
           <span className="ml-3 text-gray-600">Loading dashboard...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="Admin Dashboard">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-red-800 mb-2">Unable to Load Dashboard</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={loadAdminData}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </Layout>
     );

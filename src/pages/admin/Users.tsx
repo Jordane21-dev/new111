@@ -20,19 +20,21 @@ export default function AdminUsers() {
     try {
       setLoading(true);
       setError('');
+      console.log('🔄 Fetching users...');
       const response = await usersAPI.getUsers();
+      console.log('✅ Users fetched:', response.data);
       setUsers(response.data || []);
     } catch (error) {
-      console.error('Failed to fetch users:', error);
-      setError('Failed to load users');
+      console.error('❌ Failed to fetch users:', error);
+      setError('Failed to load users. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         user.email?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = !selectedRole || user.role === selectedRole;
     const matchesStatus = selectedStatus === '' || 
                          (selectedStatus === 'active' && user.is_active) ||
@@ -43,10 +45,12 @@ export default function AdminUsers() {
 
   const handleToggleStatus = async (userId: string) => {
     try {
+      console.log('🔄 Toggling user status for:', userId);
       await usersAPI.toggleUserStatus(userId);
       await fetchUsers(); // Refresh the list
+      console.log('✅ User status toggled successfully');
     } catch (error) {
-      console.error('Failed to toggle user status:', error);
+      console.error('❌ Failed to toggle user status:', error);
       alert('Failed to update user status. Please try again.');
     }
   };
@@ -54,10 +58,12 @@ export default function AdminUsers() {
   const handleDeleteUser = async (userId: string) => {
     if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       try {
+        console.log('🔄 Deleting user:', userId);
         await usersAPI.deleteUser(userId);
         await fetchUsers(); // Refresh the list
+        console.log('✅ User deleted successfully');
       } catch (error) {
-        console.error('Failed to delete user:', error);
+        console.error('❌ Failed to delete user:', error);
         alert('Failed to delete user. Please try again.');
       }
     }
@@ -216,12 +222,12 @@ export default function AdminUsers() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={user.id || user.user_id} className="hover:bg-gray-50 transition-colors">
                   <td className="py-4 px-6">
                     <div>
-                      <div className="font-medium text-gray-900">{user.name}</div>
-                      <div className="text-sm text-gray-600">{user.email}</div>
-                      <div className="text-sm text-gray-500">{user.phone}</div>
+                      <div className="font-medium text-gray-900">{user.name || 'N/A'}</div>
+                      <div className="text-sm text-gray-600">{user.email || 'N/A'}</div>
+                      <div className="text-sm text-gray-500">{user.phone_number || user.phone || 'N/A'}</div>
                     </div>
                   </td>
                   <td className="py-4 px-6">
@@ -230,7 +236,7 @@ export default function AdminUsers() {
                     </span>
                   </td>
                   <td className="py-4 px-6">
-                    <span className="text-gray-900">{user.town}</span>
+                    <span className="text-gray-900">{user.town || 'N/A'}</span>
                   </td>
                   <td className="py-4 px-6">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
@@ -243,13 +249,13 @@ export default function AdminUsers() {
                   </td>
                   <td className="py-4 px-6">
                     <div className="text-sm text-gray-900">
-                      {new Date(user.created_at).toLocaleDateString()}
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
                     </div>
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => handleToggleStatus(user.id)}
+                        onClick={() => handleToggleStatus(user.id || user.user_id)}
                         className={`p-2 rounded-lg transition-colors ${
                           user.is_active
                             ? 'text-red-600 hover:bg-red-100'
@@ -269,7 +275,7 @@ export default function AdminUsers() {
                       
                       {user.role !== 'admin' && (
                         <button
-                          onClick={() => handleDeleteUser(user.id)}
+                          onClick={() => handleDeleteUser(user.id || user.user_id)}
                           className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                           title="Delete user"
                         >
@@ -288,7 +294,11 @@ export default function AdminUsers() {
           <div className="text-center py-12">
             <Search className="h-12 w-12 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-medium text-gray-900 mb-2">No users found</h3>
-            <p className="text-gray-600">Try adjusting your search criteria.</p>
+            <p className="text-gray-600">
+              {users.length === 0 
+                ? 'No users have registered yet.' 
+                : 'Try adjusting your search criteria.'}
+            </p>
           </div>
         )}
       </div>
