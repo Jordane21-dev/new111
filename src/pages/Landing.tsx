@@ -142,15 +142,15 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8 text-center">
             <div className="transform hover:scale-105 transition-transform duration-200">
-              <div className="text-4xl font-bold text-orange-600 mb-2">500+</div>
+              <div className="text-4xl font-bold text-orange-600 mb-2">10+</div>
               <div className="text-gray-700 font-medium">Partner Restaurants</div>
             </div>
             <div className="transform hover:scale-105 transition-transform duration-200">
-              <div className="text-4xl font-bold text-green-600 mb-2">10,000+</div>
+              <div className="text-4xl font-bold text-green-600 mb-2">10+</div>
               <div className="text-gray-700 font-medium">Happy Customers</div>
             </div>
             <div className="transform hover:scale-105 transition-transform duration-200">
-              <div className="text-4xl font-bold text-amber-600 mb-2">50+</div>
+              <div className="text-4xl font-bold text-amber-600 mb-2">3+</div>
               <div className="text-gray-700 font-medium">Cities Covered</div>
             </div>
             <div className="transform hover:scale-105 transition-transform duration-200">

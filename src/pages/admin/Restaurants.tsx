@@ -1,51 +1,90 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
-import { mockRestaurants } from '../../data/mockData';
-import { ArrowLeft, Search, Filter, Eye, Check, X, Star, MapPin } from 'lucide-react';
+import { useRestaurants } from '../../contexts/RestaurantContext';
+import { ArrowLeft, Search, Filter, Eye, Check, X, Star, MapPin, AlertCircle } from 'lucide-react';
 
 export default function AdminRestaurants() {
-  const [restaurants, setRestaurants] = useState(mockRestaurants);
+  const { restaurants, fetchRestaurants, updateRestaurant, loading, error } = useRestaurants();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTown, setSelectedTown] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+
+  useEffect(() => {
+    fetchRestaurants();
+  }, []);
 
   const filteredRestaurants = restaurants.filter(restaurant => {
     const matchesSearch = restaurant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          restaurant.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTowns = !selectedTown || restaurant.town === selectedTown;
     const matchesStatus = selectedStatus === '' || 
-                         (selectedStatus === 'active' && restaurant.isActive) ||
-                         (selectedStatus === 'inactive' && !restaurant.isActive);
+                         (selectedStatus === 'active' && restaurant.is_active) ||
+                         (selectedStatus === 'inactive' && !restaurant.is_active);
     
     return matchesSearch && matchesTowns && matchesStatus;
   });
 
-  const handleApproveRestaurant = (restaurantId: string) => {
-    setRestaurants(prev => prev.map(restaurant => 
-      restaurant.id === restaurantId ? { ...restaurant, isActive: true } : restaurant
-    ));
+  const handleApproveRestaurant = async (restaurantId: string) => {
+    try {
+      await updateRestaurant(restaurantId, { is_active: true });
+    } catch (error) {
+      console.error('Failed to approve restaurant:', error);
+      alert('Failed to approve restaurant. Please try again.');
+    }
   };
 
-  const handleRejectRestaurant = (restaurantId: string) => {
+  const handleRejectRestaurant = async (restaurantId: string) => {
     if (confirm('Are you sure you want to reject this restaurant? This action cannot be undone.')) {
-      setRestaurants(prev => prev.map(restaurant => 
-        restaurant.id === restaurantId ? { ...restaurant, isActive: false } : restaurant
-      ));
+      try {
+        await updateRestaurant(restaurantId, { is_active: false });
+      } catch (error) {
+        console.error('Failed to reject restaurant:', error);
+        alert('Failed to reject restaurant. Please try again.');
+      }
     }
   };
 
   const getRestaurantStats = () => {
     return {
       total: restaurants.length,
-      active: restaurants.filter(r => r.isActive).length,
-      pending: restaurants.filter(r => !r.isActive).length,
+      active: restaurants.filter(r => r.is_active).length,
+      pending: restaurants.filter(r => !r.is_active).length,
       towns: [...new Set(restaurants.map(r => r.town))].length
     };
   };
 
   const stats = getRestaurantStats();
   const towns = [...new Set(restaurants.map(r => r.town))];
+
+  if (loading) {
+    return (
+      <Layout title="Restaurant Management">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+          <span className="ml-3 text-gray-600">Loading restaurants...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="Restaurant Management">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-red-800 mb-2">Unable to Load Restaurants</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={fetchRestaurants}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Restaurant Management">
@@ -143,11 +182,11 @@ export default function AdminRestaurants() {
                 />
                 <div className="absolute top-3 right-3 flex space-x-2">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    restaurant.isActive 
+                    restaurant.is_active 
                       ? 'bg-green-100 text-green-600' 
                       : 'bg-yellow-100 text-yellow-600'
                   }`}>
-                    {restaurant.isActive ? 'Active' : 'Pending'}
+                    {restaurant.is_active ? 'Active' : 'Pending'}
                   </span>
                 </div>
                 <div className="absolute bottom-3 left-3 bg-white bg-opacity-90 backdrop-blur-sm px-2 py-1 rounded-full flex items-center space-x-1">
@@ -166,7 +205,7 @@ export default function AdminRestaurants() {
                 </div>
                 
                 <div className="flex flex-wrap gap-1 mb-4">
-                  {restaurant.categories.slice(0, 2).map(category => (
+                  {restaurant.categories?.slice(0, 2).map(category => (
                     <span key={category} className="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full">
                       {category}
                     </span>
@@ -175,16 +214,16 @@ export default function AdminRestaurants() {
                 
                 <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-4">
                   <div>
-                    <span className="font-medium">Delivery:</span> {restaurant.deliveryTime}
+                    <span className="font-medium">Delivery:</span> {restaurant.delivery_time}
                   </div>
                   <div>
-                    <span className="font-medium">Fee:</span> {restaurant.deliveryFee} XAF
+                    <span className="font-medium">Fee:</span> {restaurant.delivery_fee} XAF
                   </div>
                   <div>
-                    <span className="font-medium">Min Order:</span> {restaurant.minOrder.toLocaleString()} XAF
+                    <span className="font-medium">Min Order:</span> {restaurant.min_order?.toLocaleString()} XAF
                   </div>
                   <div>
-                    <span className="font-medium">Owner ID:</span> {restaurant.ownerId}
+                    <span className="font-medium">Owner ID:</span> {restaurant.user_id}
                   </div>
                 </div>
                 
@@ -194,7 +233,7 @@ export default function AdminRestaurants() {
                     <span>View</span>
                   </button>
                   
-                  {!restaurant.isActive ? (
+                  {!restaurant.is_active ? (
                     <>
                       <button
                         onClick={() => handleApproveRestaurant(restaurant.id)}

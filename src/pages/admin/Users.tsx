@@ -1,82 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
-import { ArrowLeft, Search, Filter, Edit, Trash2, UserCheck, UserX } from 'lucide-react';
-
-// Mock users data - in real app this would come from API
-const mockUsers = [
-  {
-    id: '1',
-    name: 'John Customer',
-    email: 'customer@test.com',
-    role: 'customer',
-    town: 'Douala',
-    phone: '+237 6XX XXX XXX',
-    isActive: true,
-    joinedAt: '2024-01-15',
-    lastLogin: '2024-01-20'
-  },
-  {
-    id: '2',
-    name: 'Marie Restaurant',
-    email: 'owner@test.com',
-    role: 'owner',
-    town: 'Yaoundé',
-    phone: '+237 6XX XXX XXX',
-    isActive: true,
-    joinedAt: '2024-01-10',
-    lastLogin: '2024-01-19'
-  },
-  {
-    id: '3',
-    name: 'Paul Delivery',
-    email: 'agent@test.com',
-    role: 'agent',
-    town: 'Douala',
-    phone: '+237 6XX XXX XXX',
-    isActive: true,
-    joinedAt: '2024-01-12',
-    lastLogin: '2024-01-20'
-  },
-  {
-    id: '4',
-    name: 'Sarah Customer',
-    email: 'sarah@example.com',
-    role: 'customer',
-    town: 'Bafoussam',
-    phone: '+237 6XX XXX XXX',
-    isActive: false,
-    joinedAt: '2024-01-18',
-    lastLogin: '2024-01-18'
-  }
-];
+import { usersAPI } from '../../services/api';
+import { ArrowLeft, Search, Filter, Edit, Trash2, UserCheck, UserX, AlertCircle } from 'lucide-react';
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await usersAPI.getUsers();
+      setUsers(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+      setError('Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = !selectedRole || user.role === selectedRole;
     const matchesStatus = selectedStatus === '' || 
-                         (selectedStatus === 'active' && user.isActive) ||
-                         (selectedStatus === 'inactive' && !user.isActive);
+                         (selectedStatus === 'active' && user.is_active) ||
+                         (selectedStatus === 'inactive' && !user.is_active);
     
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const handleToggleStatus = (userId: string) => {
-    setUsers(prev => prev.map(user => 
-      user.id === userId ? { ...user, isActive: !user.isActive } : user
-    ));
+  const handleToggleStatus = async (userId: string) => {
+    try {
+      await usersAPI.toggleUserStatus(userId);
+      await fetchUsers(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to toggle user status:', error);
+      alert('Failed to update user status. Please try again.');
+    }
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      setUsers(prev => prev.filter(user => user.id !== userId));
+      try {
+        await usersAPI.deleteUser(userId);
+        await fetchUsers(); // Refresh the list
+      } catch (error) {
+        console.error('Failed to delete user:', error);
+        alert('Failed to delete user. Please try again.');
+      }
     }
   };
 
@@ -95,12 +78,41 @@ export default function AdminUsers() {
       customers: users.filter(u => u.role === 'customer').length,
       owners: users.filter(u => u.role === 'owner').length,
       agents: users.filter(u => u.role === 'agent').length,
-      active: users.filter(u => u.isActive).length,
-      inactive: users.filter(u => !u.isActive).length
+      active: users.filter(u => u.is_active).length,
+      inactive: users.filter(u => !u.is_active).length
     };
   };
 
   const stats = getRoleStats();
+
+  if (loading) {
+    return (
+      <Layout title="User Management">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+          <span className="ml-3 text-gray-600">Loading users...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="User Management">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-red-800 mb-2">Unable to Load Users</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={fetchUsers}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="User Management">
@@ -222,19 +234,16 @@ export default function AdminUsers() {
                   </td>
                   <td className="py-4 px-6">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                      user.isActive 
+                      user.is_active 
                         ? 'bg-green-100 text-green-600' 
                         : 'bg-red-100 text-red-600'
                     }`}>
-                      {user.isActive ? 'Active' : 'Inactive'}
+                      {user.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="py-4 px-6">
                     <div className="text-sm text-gray-900">
-                      {new Date(user.joinedAt).toLocaleDateString()}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Last: {new Date(user.lastLogin).toLocaleDateString()}
+                      {new Date(user.created_at).toLocaleDateString()}
                     </div>
                   </td>
                   <td className="py-4 px-6">
@@ -242,13 +251,13 @@ export default function AdminUsers() {
                       <button
                         onClick={() => handleToggleStatus(user.id)}
                         className={`p-2 rounded-lg transition-colors ${
-                          user.isActive
+                          user.is_active
                             ? 'text-red-600 hover:bg-red-100'
                             : 'text-green-600 hover:bg-green-100'
                         }`}
-                        title={user.isActive ? 'Deactivate user' : 'Activate user'}
+                        title={user.is_active ? 'Deactivate user' : 'Activate user'}
                       >
-                        {user.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                        {user.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                       </button>
                       
                       <button
@@ -258,13 +267,15 @@ export default function AdminUsers() {
                         <Edit className="h-4 w-4" />
                       </button>
                       
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                        title="Delete user"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {user.role !== 'admin' && (
+                        <button
+                          onClick={() => handleDeleteUser(user.id)}
+                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Delete user"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

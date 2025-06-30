@@ -1,15 +1,49 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
+import { useAuth } from '../../contexts/AuthContext';
+import { useRestaurants } from '../../contexts/RestaurantContext';
 import { useOrders } from '../../contexts/OrderContext';
-import { mockRestaurants } from '../../data/mockData';
+import { usersAPI } from '../../services/api';
 import { Users, Store, ShoppingBag, DollarSign, TrendingUp, AlertCircle, Eye, Settings } from 'lucide-react';
 
 export default function AdminDashboard() {
-  const { orders } = useOrders();
+  const { user } = useAuth();
+  const { restaurants, fetchRestaurants, loading: restaurantsLoading } = useRestaurants();
+  const { orders, getCustomerOrders, loading: ordersLoading } = useOrders();
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
-  const totalUsers = 150; // Mock data - in real app, this would come from API
-  const totalRestaurants = mockRestaurants.length;
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      loadAdminData();
+    }
+  }, [user]);
+
+  const loadAdminData = async () => {
+    try {
+      // Fetch restaurants
+      await fetchRestaurants();
+      
+      // Fetch users
+      setLoadingUsers(true);
+      const usersResponse = await usersAPI.getUsers();
+      setUsers(usersResponse.data || []);
+      
+      // Note: Orders are typically fetched per user role, 
+      // but admin might need a different endpoint for all orders
+    } catch (error) {
+      console.error('Failed to load admin data:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const totalUsers = users.length;
+  const totalRestaurants = restaurants.length;
+  const activeRestaurants = restaurants.filter(r => r.is_active).length;
+  const pendingRestaurants = restaurants.filter(r => !r.is_active).length;
+  
   const totalOrders = orders.length;
   const totalRevenue = orders
     .filter(order => order.status === 'delivered')
@@ -17,14 +51,22 @@ export default function AdminDashboard() {
 
   const todayOrders = orders.filter(order => {
     const today = new Date();
-    const orderDate = new Date(order.createdAt);
+    const orderDate = new Date(order.created_at);
     return orderDate.toDateString() === today.toDateString();
   });
 
-  const pendingRestaurants = mockRestaurants.filter(r => !r.isActive).length;
-  const activeRestaurants = mockRestaurants.filter(r => r.isActive).length;
-
   const recentOrders = orders.slice(0, 5);
+
+  if (restaurantsLoading || ordersLoading || loadingUsers) {
+    return (
+      <Layout title="Admin Dashboard">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+          <span className="ml-3 text-gray-600">Loading dashboard...</span>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Admin Dashboard">
@@ -179,10 +221,10 @@ export default function AdminDashboard() {
                   <div>
                     <div className="font-medium text-gray-900">#{order.id}</div>
                     <div className="text-sm text-gray-600">
-                      {order.customerName} • {order.restaurantName}
+                      {order.customer_name || 'Customer'} • {order.restaurant_name}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {new Date(order.createdAt).toLocaleString()}
+                      {new Date(order.created_at).toLocaleString()}
                     </div>
                   </div>
                   <div className="text-right">
