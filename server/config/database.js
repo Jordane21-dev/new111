@@ -146,7 +146,7 @@ async function createAllTables() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         customer_id INT NOT NULL,
         restaurant_id INT NOT NULL,
-        total DECIMAL(10,2) NOT NULL,
+        total_amount DECIMAL(10,2) NOT NULL,
         status ENUM('pending', 'preparing', 'ready', 'in_transit', 'delivered', 'cancelled') DEFAULT 'pending',
         delivery_address TEXT NOT NULL,
         customer_phone VARCHAR(20) NOT NULL,
@@ -230,6 +230,25 @@ async function createAllTables() {
     `);
     console.log('✅ Delivery locations table ready');
 
+    // Reviews table - NEW for user reviews
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        comment TEXT NOT NULL,
+        is_approved BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_review (user_id),
+        INDEX idx_rating (rating),
+        INDEX idx_approved (is_approved),
+        INDEX idx_created (created_at)
+      )
+    `);
+    console.log('✅ Reviews table ready');
+
   } catch (error) {
     console.error('❌ Error creating tables:', error);
     throw error;
@@ -248,7 +267,7 @@ async function createDefaultAdmin() {
       
       await pool.execute(
         'INSERT INTO users (name, email, password, role, town, phone_number) VALUES (?, ?, ?, ?, ?, ?)',
-        ['SmartBite Admin', 'admin@smartbite.cm', hashedPassword, 'admin', 'Douala', '+237600000000']
+        ['SmartBite Admin', 'admin@smartbite.cm', hashedPassword, 'admin', 'Douala', '+237680938302']
       );
       console.log('✅ Default admin user created (admin@smartbite.cm / admin123)');
     } else {

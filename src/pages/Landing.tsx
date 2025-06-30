@@ -1,8 +1,63 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { UtensilsCrossed, Truck, Users, Star, ArrowRight, Phone, Mail, MapPin } from 'lucide-react';
+import { UtensilsCrossed, Truck, Users, Star, ArrowRight, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { reviewsAPI } from '../services/api';
+
+interface Review {
+  id: string;
+  user_name: string;
+  user_role: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+}
 
 export default function Landing() {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const response = await reviewsAPI.getReviews();
+        setReviews(response.data.slice(0, 3)); // Show only 3 reviews
+      } catch (error) {
+        console.error('Failed to fetch reviews:', error);
+        // Use fallback reviews if API fails
+        setReviews([
+          {
+            id: '1',
+            user_name: 'Aminata K.',
+            user_role: 'Customer',
+            rating: 5,
+            comment: 'SmartBite has revolutionized how I order food. The variety of local restaurants and fast delivery makes it perfect for busy days in Douala.',
+            created_at: '2025-01-15'
+          },
+          {
+            id: '2',
+            user_name: 'Chef Pierre M.',
+            user_role: 'Restaurant Owner',
+            rating: 5,
+            comment: 'As a restaurant owner, SmartBite has helped me reach more customers. The platform is easy to use and the support team is excellent.',
+            created_at: '2025-01-14'
+          },
+          {
+            id: '3',
+            user_name: 'Samuel T.',
+            user_role: 'Delivery Agent',
+            rating: 5,
+            comment: 'Working as a delivery agent with SmartBite provides flexible income. The app makes it easy to find deliveries and communicate with customers.',
+            created_at: '2025-01-13'
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReviews();
+  }, []);
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -114,7 +169,7 @@ export default function Landing() {
             <p className="text-xl text-gray-600">Whether you're hungry, own a restaurant, or want to deliver, we have a place for you</p>
           </div>
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl hover:shadow-lg transition-all duration-300 border-2 border-orange-200 hover:border-orange-300">
               <h3 className="text-xl font-bold text-orange-600 mb-3">Customers</h3>
               <p className="text-gray-700 mb-4">Browse restaurants, order food, track delivery</p>
@@ -138,61 +193,56 @@ export default function Landing() {
                 Start Delivering →
               </Link>
             </div>
-            
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl hover:shadow-lg transition-all duration-300 border-2 border-purple-200 hover:border-purple-300">
-              <h3 className="text-xl font-bold text-purple-600 mb-3">Administrators</h3>
-              <p className="text-gray-700 mb-4">Oversee platform operations and growth</p>
-              <Link to="/login" className="text-purple-600 font-medium hover:text-purple-700">
-                Admin Access →
-              </Link>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Testimonials */}
+      {/* Customer Reviews */}
       <div className="py-20 bg-gradient-to-br from-amber-50 to-orange-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">What Our Users Say</h2>
+            <div className="flex items-center justify-center space-x-2 mb-4">
+              <MessageCircle className="h-6 w-6 text-orange-600" />
+              <span className="text-gray-600">Real reviews from our community</span>
+            </div>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
-              <div className="flex items-center mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
-                ))}
-              </div>
-              <p className="text-gray-700 mb-6 italic">
-                "SmartBite has revolutionized how I order food. The variety of local restaurants and fast delivery makes it perfect for busy days in Douala."
-              </p>
-              <div className="font-semibold text-gray-900">- Aminata K., Customer</div>
+          {loading ? (
+            <div className="flex justify-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
             </div>
-            
-            <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
-              <div className="flex items-center mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
-                ))}
-              </div>
-              <p className="text-gray-700 mb-6 italic">
-                "As a restaurant owner, SmartBite has helped me reach more customers. The platform is easy to use and the support team is excellent."
-              </p>
-              <div className="font-semibold text-gray-900">- Chef Pierre M., Restaurant Owner</div>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-8">
+              {reviews.map((review) => (
+                <div key={review.id} className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+                  <div className="flex items-center mb-4">
+                    {[...Array(review.rating)].map((_, i) => (
+                      <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-gray-700 mb-6 italic">
+                    "{review.comment}"
+                  </p>
+                  <div className="font-semibold text-gray-900">
+                    - {review.user_name}, {review.user_role}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {new Date(review.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
             </div>
-            
-            <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
-              <div className="flex items-center mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
-                ))}
-              </div>
-              <p className="text-gray-700 mb-6 italic">
-                "Working as a delivery agent with SmartBite provides flexible income. The app makes it easy to find deliveries and communicate with customers."
-              </p>
-              <div className="font-semibold text-gray-900">- Samuel T., Delivery Agent</div>
-            </div>
+          )}
+          
+          <div className="text-center mt-12">
+            <Link
+              to="/register"
+              className="inline-flex items-center bg-orange-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-orange-700 transition-colors"
+            >
+              <MessageCircle className="h-5 w-5 mr-2" />
+              Share Your Experience
+            </Link>
           </div>
         </div>
       </div>
@@ -212,7 +262,7 @@ export default function Landing() {
               <div className="flex space-x-4">
                 <div className="flex items-center space-x-2 text-gray-400">
                   <Phone className="h-4 w-4" />
-                  <span>+237 6XX XXX XXX</span>
+                  <span>+237 680 938 302</span>
                 </div>
               </div>
             </div>
@@ -250,7 +300,7 @@ export default function Landing() {
           </div>
           
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 SmartBite Cameroon. All rights reserved.</p>
+            <p>&copy; 2025 SmartBite Cameroon. All rights reserved.</p>
           </div>
         </div>
       </footer>

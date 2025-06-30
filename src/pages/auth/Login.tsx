@@ -31,18 +31,6 @@ export default function Login() {
     }
   };
 
-  const demoCredentials = [
-    { role: 'Customer', email: 'customer@test.com', password: 'password' },
-    { role: 'Restaurant Owner', email: 'owner@test.com', password: 'password' },
-    { role: 'Delivery Agent', email: 'agent@test.com', password: 'password' },
-    { role: 'Admin', email: 'admin@test.com', password: 'password' }
-  ];
-
-  const handleDemoLogin = (email: string, password: string) => {
-    setEmail(email);
-    setPassword(password);
-  };
-
   return (
     <div className="min-h-screen flex">
       {/* Left Side - Form */}
@@ -137,38 +125,41 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Right Side - Demo Credentials */}
+      {/* Right Side - App Info */}
       <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-orange-600 via-green-600 to-amber-600 p-8 items-center">
         <div className="max-w-md mx-auto text-white">
-          <h3 className="text-2xl font-bold mb-6">Demo Accounts</h3>
+          <h3 className="text-2xl font-bold mb-6">Welcome to SmartBite</h3>
           <p className="mb-6 text-orange-100">
-            Try SmartBite with these demo accounts to explore different user experiences:
+            Cameroon's premier food delivery platform connecting communities through great food.
           </p>
           
           <div className="space-y-4">
-            {demoCredentials.map((cred, index) => (
-              <div key={index} className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 border border-white border-opacity-20">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-semibold">{cred.role}</h4>
-                  <button
-                    onClick={() => handleDemoLogin(cred.email, cred.password)}
-                    className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full transition-all duration-200"
-                  >
-                    Use This
-                  </button>
-                </div>
-                <p className="text-sm text-orange-100">
-                  <strong>Email:</strong> {cred.email}<br />
-                  <strong>Password:</strong> {cred.password}
-                </p>
-              </div>
-            ))}
+            <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 border border-white border-opacity-20">
+              <h4 className="font-semibold mb-2">🍽️ For Food Lovers</h4>
+              <p className="text-sm text-orange-100">
+                Discover authentic Cameroonian cuisine and international favorites from local restaurants
+              </p>
+            </div>
+            
+            <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 border border-white border-opacity-20">
+              <h4 className="font-semibold mb-2">🏪 For Restaurant Owners</h4>
+              <p className="text-sm text-orange-100">
+                Expand your reach and grow your business with our comprehensive management tools
+              </p>
+            </div>
+            
+            <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 border border-white border-opacity-20">
+              <h4 className="font-semibold mb-2">🚚 For Delivery Partners</h4>
+              <p className="text-sm text-orange-100">
+                Earn flexible income by delivering great food to happy customers in your area
+              </p>
+            </div>
           </div>
           
           <div className="mt-8 p-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg border border-white border-opacity-20">
             <p className="text-sm text-orange-100">
-              <strong>💡 Tip:</strong> Each role provides a different dashboard experience. 
-              Try them all to see how SmartBite works for customers, restaurant owners, delivery agents, and administrators!
+              <strong>📞 Contact:</strong> +237 680 938 302<br />
+              <strong>🗓️ Year:</strong> 2025 - Leading Cameroon's food revolution
             </p>
           </div>
         </div>

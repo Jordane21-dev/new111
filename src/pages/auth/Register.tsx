@@ -173,17 +173,12 @@ export default function Register() {
             </div>
           </div>
 
-          {adminExists && (
-            <div className="bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg p-4 mt-8">
-              <div className="flex items-center space-x-2 mb-2">
-                <AlertCircle className="h-5 w-5 text-white" />
-                <h4 className="font-semibold text-white">Admin Registration Restricted</h4>
-              </div>
-              <p className="text-white text-opacity-90 text-sm">
-                An admin account already exists. Only one admin account is allowed per system for security purposes.
-              </p>
-            </div>
-          )}
+          <div className="mt-8 p-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg border border-white border-opacity-20">
+            <p className="text-sm text-orange-100">
+              <strong>📞 Contact:</strong> +237 680 938 302<br />
+              <strong>🗓️ Year:</strong> 2025 - Leading Cameroon's food revolution
+            </p>
+          </div>
         </div>
       </div>
 

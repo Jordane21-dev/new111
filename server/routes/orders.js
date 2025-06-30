@@ -43,7 +43,7 @@ router.get('/customer', requireRole(['customer']), async (req, res) => {
       restaurant_id: order.restaurant_id.toString(),
       restaurant_name: order.restaurant_name,
       restaurant_image: order.restaurant_image,
-      total: parseFloat(order.total),
+      total: parseFloat(order.total_amount), // Use total_amount column
       status: order.status,
       delivery_address: order.delivery_address,
       customer_phone: order.customer_phone,
@@ -286,10 +286,10 @@ router.post('/', requireRole(['customer']), async (req, res) => {
 
     console.log(`💰 Order total calculated: ${total} XAF for ${orderItems.length} items`);
 
-    // Create order
+    // Create order - Use total_amount column
     const [orderResult] = await connection.execute(
       `INSERT INTO orders 
-       (customer_id, restaurant_id, total, delivery_address, customer_phone, payment_method)
+       (customer_id, restaurant_id, total_amount, delivery_address, customer_phone, payment_method)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [req.user.id, restaurant_id, total, delivery_address.trim(), customer_phone.trim(), payment_method]
     );

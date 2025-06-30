@@ -78,7 +78,7 @@ export const ordersAPI = {
   acceptDelivery: (id) => api.put(`/orders/${id}/accept-delivery`),
 };
 
-// Payment API - NEW
+// Payment API
 export const paymentAPI = {
   initiatePayment: (data) => api.post('/payment/initiate', data),
   getPaymentStatus: (orderId) => api.get(`/payment/status/${orderId}`),
@@ -90,6 +90,14 @@ export const locationAPI = {
   updateLocation: (data) => api.post('/location/update', data),
   trackOrder: (orderId) => api.get(`/location/track/${orderId}`),
   getLocationHistory: (orderId) => api.get(`/location/history/${orderId}`),
+};
+
+// Reviews API - NEW
+export const reviewsAPI = {
+  getReviews: () => api.get('/reviews'),
+  createReview: (data) => api.post('/reviews', data),
+  updateReview: (id, data) => api.put(`/reviews/${id}`, data),
+  deleteReview: (id) => api.delete(`/reviews/${id}`),
 };
 
 export default api;
