@@ -171,19 +171,19 @@ export default function Register() {
                 </p>
               </div>
             </div>
-
-            {adminExists && (
-              <div className="bg-red-500 bg-opacity-20 border border-red-300 rounded-lg p-4">
-                <div className="flex items-center space-x-2 mb-2">
-                  <AlertCircle className="h-5 w-5 text-red-200" />
-                  <h4 className="font-semibold text-red-100">Admin Registration Restricted</h4>
-                </div>
-                <p className="text-red-100 text-sm">
-                  An admin account already exists. Only one admin account is allowed per system for security purposes.
-                </p>
-              </div>
-            )}
           </div>
+
+          {adminExists && (
+            <div className="bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg p-4 mt-8">
+              <div className="flex items-center space-x-2 mb-2">
+                <AlertCircle className="h-5 w-5 text-white" />
+                <h4 className="font-semibold text-white">Admin Registration Restricted</h4>
+              </div>
+              <p className="text-white text-opacity-90 text-sm">
+                An admin account already exists. Only one admin account is allowed per system for security purposes.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -206,17 +206,6 @@ export default function Register() {
               <div className="flex items-center space-x-2">
                 <AlertCircle className="h-4 w-4" />
                 <span>{error}</span>
-              </div>
-            </div>
-          )}
-
-          {adminExists && (
-            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4" />
-                <span className="text-sm">
-                  Admin registration is currently disabled. An admin account already exists.
-                </span>
               </div>
             </div>
           )}
