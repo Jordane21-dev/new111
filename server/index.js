@@ -36,8 +36,7 @@ app.use(express.json());
 try {
   await initializeDatabase();
 } catch (error) {
-  console.log('⚠️  Database initialization failed - continuing without database');
-  console.log('⚠️  This is expected in WebContainer environment');
+  console.log('⚠️  Database initialization failed, continuing with limited functionality');
 }
 
 // Routes
