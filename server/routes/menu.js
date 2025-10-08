@@ -11,27 +11,25 @@ router.get('/restaurant/:restaurantId', async (req, res) => {
     const restaurantId = req.params.restaurantId;
     
     let query = `
-      SELECT MenuID as id, ItemName as item_name, ItemDescription as item_description, 
-             Price as item_price, RestaurantID as restaurant_id, Category as category,
-             15 as prep_time, Availability as is_available,
-             'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg' as image,
-             NOW() as created_at, NOW() as updated_at
-      FROM MenuItem 
-      WHERE RestaurantID = ?
+      SELECT menu_id as id, item_name, item_description, item_price, 
+             restaurant_id, category, prep_time, is_available, image,
+             created_at, updated_at
+      FROM menu_items 
+      WHERE restaurant_id = ?
     `;
     const params = [restaurantId];
 
     if (category) {
-      query += ' AND Category = ?';
+      query += ' AND category = ?';
       params.push(category);
     }
 
     if (available !== undefined) {
-      query += ' AND Availability = ?';
-      params.push(available === 'true' ? 1 : 0);
+      query += ' AND is_available = ?';
+      params.push(available === 'true');
     }
 
-    query += ' ORDER BY Category, ItemName';
+    query += ' ORDER BY category, item_name';
 
     console.log(`🍽️  Fetching menu for restaurant ${restaurantId}`);
     const [menuItems] = await pool.execute(query, params);
@@ -44,10 +42,10 @@ router.get('/restaurant/:restaurantId', async (req, res) => {
       item_name: item.item_name,
       item_description: item.item_description || '',
       item_price: parseFloat(item.item_price),
-      category: item.category || 'Main Course',
+      category: item.category,
       prep_time: item.prep_time || 15,
       is_available: Boolean(item.is_available),
-      image: item.image,
+      image: item.image || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg',
       created_at: item.created_at,
       updated_at: item.updated_at
     }));
@@ -59,6 +57,43 @@ router.get('/restaurant/:restaurantId', async (req, res) => {
   }
 });
 
+// Get menu item by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const [menuItems] = await pool.execute(
+      `SELECT menu_id as id, item_name, item_description, item_price, 
+              restaurant_id, category, prep_time, is_available, image,
+              created_at, updated_at
+       FROM menu_items WHERE menu_id = ?`,
+      [req.params.id]
+    );
+
+    if (menuItems.length === 0) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
+
+    const item = menuItems[0];
+    const transformedItem = {
+      id: item.id.toString(),
+      restaurant_id: item.restaurant_id.toString(),
+      item_name: item.item_name,
+      item_description: item.item_description || '',
+      item_price: parseFloat(item.item_price),
+      category: item.category,
+      prep_time: item.prep_time || 15,
+      is_available: Boolean(item.is_available),
+      image: item.image || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg',
+      created_at: item.created_at,
+      updated_at: item.updated_at
+    };
+
+    res.json(transformedItem);
+  } catch (error) {
+    console.error('❌ Get menu item error:', error);
+    res.status(500).json({ error: 'Failed to fetch menu item' });
+  }
+});
+
 // Create menu item (owner only)
 router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => {
   try {
@@ -67,7 +102,9 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
       item_name,
       item_description,
       item_price,
-      category
+      image,
+      category,
+      prep_time
     } = req.body;
 
     console.log('🍽️  Creating menu item:', { item_name, restaurant_id, category });
@@ -81,29 +118,44 @@ router.post('/', authenticateToken, requireRole(['owner']), async (req, res) => 
       errors.push('Valid item price is required');
     }
     if (!category?.trim()) errors.push('Category is required');
+    if (prep_time && (isNaN(Number(prep_time)) || Number(prep_time) <= 0)) {
+      errors.push('Valid preparation time is required');
+    }
 
     if (errors.length > 0) {
       return res.status(400).json({ error: errors.join(', ') });
     }
 
     // Verify restaurant ownership
-    const [restaurants] = await pool.execute(`
-      SELECT r.RestaurantID
-      FROM Restaurant r
-      JOIN RestaurantManager rm ON r.ManagerID = rm.ManagerID
-      JOIN RestaurantStaff rs ON rm.StaffID = rs.StaffID
-      WHERE r.RestaurantID = ? AND rs.UserID = ?
-    `, [restaurant_id, req.user.id]);
+    const [restaurants] = await pool.execute(
+      'SELECT user_id FROM restaurants_info WHERE id = ?',
+      [restaurant_id]
+    );
 
     if (restaurants.length === 0) {
+      return res.status(404).json({ error: 'Restaurant not found' });
+    }
+
+    if (restaurants[0].user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to add items to this restaurant' });
     }
 
     // Insert menu item
-    const [result] = await pool.execute(`
-      INSERT INTO MenuItem (RestaurantID, ItemName, ItemDescription, Price, Category, Availability)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `, [restaurant_id, item_name.trim(), item_description.trim(), Number(item_price), category.trim()]);
+    const [result] = await pool.execute(
+      `INSERT INTO menu_items 
+       (restaurant_id, item_name, item_description, item_price, image, category, prep_time, is_available)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        restaurant_id,
+        item_name.trim(),
+        item_description.trim(),
+        Number(item_price),
+        image?.trim() || 'https://images.pexels.com/photos/958545/pexels-photo-958545.jpeg',
+        category.trim(),
+        Number(prep_time) || 15,
+        true
+      ]
+    );
 
     console.log(`✅ Menu item created with ID: ${result.insertId}`);
 
@@ -123,22 +175,25 @@ router.put('/:id', authenticateToken, requireRole(['owner']), async (req, res) =
     const itemId = req.params.id;
 
     // Verify ownership
-    const [items] = await pool.execute(`
-      SELECT mi.MenuID
-      FROM MenuItem mi
-      JOIN Restaurant r ON mi.RestaurantID = r.RestaurantID
-      JOIN RestaurantManager rm ON r.ManagerID = rm.ManagerID
-      JOIN RestaurantStaff rs ON rm.StaffID = rs.StaffID
-      WHERE mi.MenuID = ? AND rs.UserID = ?
-    `, [itemId, req.user.id]);
+    const [items] = await pool.execute(
+      `SELECT mi.*, r.user_id 
+       FROM menu_items mi
+       JOIN restaurants_info r ON mi.restaurant_id = r.id
+       WHERE mi.menu_id = ?`,
+      [itemId]
+    );
 
     if (items.length === 0) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
+
+    if (items[0].user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to update this menu item' });
     }
 
     const {
-      item_name, item_description, item_price,
-      category, is_available
+      item_name, item_description, item_price, image,
+      category, prep_time, is_available
     } = req.body;
 
     // Build update query
@@ -146,30 +201,38 @@ router.put('/:id', authenticateToken, requireRole(['owner']), async (req, res) =
     const updateValues = [];
 
     if (item_name !== undefined) { 
-      updateFields.push('ItemName = ?'); 
+      updateFields.push('item_name = ?'); 
       updateValues.push(item_name.trim()); 
     }
     if (item_description !== undefined) { 
-      updateFields.push('ItemDescription = ?'); 
+      updateFields.push('item_description = ?'); 
       updateValues.push(item_description.trim()); 
     }
     if (item_price !== undefined) { 
-      updateFields.push('Price = ?'); 
+      updateFields.push('item_price = ?'); 
       updateValues.push(Number(item_price)); 
     }
+    if (image !== undefined) { 
+      updateFields.push('image = ?'); 
+      updateValues.push(image.trim()); 
+    }
     if (category !== undefined) { 
-      updateFields.push('Category = ?'); 
+      updateFields.push('category = ?'); 
       updateValues.push(category.trim()); 
     }
+    if (prep_time !== undefined) { 
+      updateFields.push('prep_time = ?'); 
+      updateValues.push(Number(prep_time)); 
+    }
     if (is_available !== undefined) { 
-      updateFields.push('Availability = ?'); 
-      updateValues.push(Boolean(is_available) ? 1 : 0); 
+      updateFields.push('is_available = ?'); 
+      updateValues.push(Boolean(is_available)); 
     }
 
     if (updateFields.length > 0) {
       updateValues.push(itemId);
       await pool.execute(
-        `UPDATE MenuItem SET ${updateFields.join(', ')} WHERE MenuID = ?`,
+        `UPDATE menu_items SET ${updateFields.join(', ')} WHERE menu_id = ?`,
         updateValues
       );
       console.log(`✅ Menu item ${itemId} updated`);
@@ -188,20 +251,23 @@ router.delete('/:id', authenticateToken, requireRole(['owner']), async (req, res
     const itemId = req.params.id;
 
     // Verify ownership
-    const [items] = await pool.execute(`
-      SELECT mi.MenuID
-      FROM MenuItem mi
-      JOIN Restaurant r ON mi.RestaurantID = r.RestaurantID
-      JOIN RestaurantManager rm ON r.ManagerID = rm.ManagerID
-      JOIN RestaurantStaff rs ON rm.StaffID = rs.StaffID
-      WHERE mi.MenuID = ? AND rs.UserID = ?
-    `, [itemId, req.user.id]);
+    const [items] = await pool.execute(
+      `SELECT mi.*, r.user_id 
+       FROM menu_items mi
+       JOIN restaurants_info r ON mi.restaurant_id = r.id
+       WHERE mi.menu_id = ?`,
+      [itemId]
+    );
 
     if (items.length === 0) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
+
+    if (items[0].user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to delete this menu item' });
     }
 
-    await pool.execute('DELETE FROM MenuItem WHERE MenuID = ?', [itemId]);
+    await pool.execute('DELETE FROM menu_items WHERE menu_id = ?', [itemId]);
     console.log(`✅ Menu item ${itemId} deleted`);
 
     res.json({ message: 'Menu item deleted successfully' });

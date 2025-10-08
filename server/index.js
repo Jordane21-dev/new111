@@ -33,11 +33,7 @@ app.use(cors({
 app.use(express.json());
 
 // Initialize database
-try {
-  await initializeDatabase();
-} catch (error) {
-  console.log('⚠️  Database initialization failed, continuing with limited functionality');
-}
+await initializeDatabase();
 
 // Routes
 app.use('/api/auth', authRoutes);
